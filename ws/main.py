@@ -41,6 +41,15 @@ CLIENTS = set()
 RECONNECT_DELAY = 1
 RECONNECT_DELAY_MAX = 30
 
+# Clients never legitimately send data (see websocket_handler), so cap
+# incoming message size well below the websockets library default (1 MiB)
+# to limit how much a misbehaving/malicious client can waste.
+WS_MAX_SIZE = 8 * 1024
+# Kept explicit even though these match the websockets library defaults, so
+# the server's keepalive behavior is visible in the code rather than implicit.
+WS_PING_INTERVAL = 20
+WS_PING_TIMEOUT = 20
+
 
 async def listen_to_broadcast() -> None:
     r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
@@ -170,7 +179,14 @@ async def websocket_handler(websocket: ServerConnection) -> None:
 async def main() -> None:
     # Start WebSocket server
     logger.trace(f"WebSocket server start >> ({env_vars['WSS_HOST']}:{env_vars['WSS_PORT']})")
-    ws_server = await websockets.serve(websocket_handler, env_vars['WSS_HOST'], env_vars['WSS_PORT'])  # noqa: E501
+    ws_server = await websockets.serve(
+        websocket_handler,
+        env_vars['WSS_HOST'],
+        env_vars['WSS_PORT'],
+        max_size=WS_MAX_SIZE,
+        ping_interval=WS_PING_INTERVAL,
+        ping_timeout=WS_PING_TIMEOUT,
+        )
     logger.debug('WebSocket server start OK')
     logger.debug('Asyncio.gather start >>')
     await asyncio.gather(
