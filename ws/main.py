@@ -86,7 +86,7 @@ async def listen_to_expired() -> None:
                         # Build the message
                         message = json.dumps({
                             "creature": splitted_key[2],
-                            "date": datetime.datetime.utcnow().isoformat(),
+                            "date": datetime.datetime.now(datetime.UTC).isoformat(),
                             "env": env_vars['API_ENV'],
                             "event": "expired",
                             "key": expired_key,
@@ -123,7 +123,7 @@ async def listen_to_set() -> None:
                         try:
                             message = json.dumps({
                                 "creature": splitted_key[2],
-                                "date": datetime.datetime.utcnow().isoformat(),
+                                "date": datetime.datetime.now(datetime.UTC).isoformat(),
                                 "env": env_vars['API_ENV'],
                                 "event": "set",
                                 "key": set_key,
