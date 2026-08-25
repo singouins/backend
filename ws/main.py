@@ -90,20 +90,23 @@ async def listen_to_expired() -> None:
                     # Check we match the API_ENV
                     if expired_key.startswith(env_vars['API_ENV']):
                         logger.debug(f"Key expired: {expired_key}")
-                        # We split the key to grab the elements
+                        # Keys are shaped {env}:{instance}:{type}:{creature}:{name}
                         splitted_key = expired_key.split(':')
                         # Build the message
-                        message = json.dumps({
-                            "creature": splitted_key[2],
-                            "date": datetime.datetime.now(datetime.UTC).isoformat(),
-                            "env": env_vars['API_ENV'],
-                            "event": "expired",
-                            "key": expired_key,
-                            "name": splitted_key[3],
-                            "type": splitted_key[1],
-                        })
-                        # Send the message to all connected WebSocket clients
-                        await notify_clients(message)
+                        try:
+                            message = json.dumps({
+                                "creature": splitted_key[3],
+                                "date": datetime.datetime.now(datetime.UTC).isoformat(),
+                                "env": env_vars['API_ENV'],
+                                "event": "expired",
+                                "key": expired_key,
+                                "name": splitted_key[4],
+                                "type": splitted_key[2],
+                            })
+                            # Send the message to all connected WebSocket clients
+                            await notify_clients(message)
+                        except IndexError as e:
+                            logger.trace(f"Key format not expected [{e}]")
         except redis.RedisError as e:
             logger.error(f'listen_to_expired: Redis connection lost ({e}), reconnecting in {delay}s')  # noqa: E501
             await asyncio.sleep(delay)
@@ -126,18 +129,18 @@ async def listen_to_set() -> None:
                     set_key = message['data'].decode()
                     # Check we match the API_ENV
                     if set_key.startswith(env_vars['API_ENV']):
-                        # We split the key to grab the elements
+                        # Keys are shaped {env}:{instance}:{type}:{creature}:{name}
                         splitted_key = set_key.split(':')
                         # Build the message
                         try:
                             message = json.dumps({
-                                "creature": splitted_key[2],
+                                "creature": splitted_key[3],
                                 "date": datetime.datetime.now(datetime.UTC).isoformat(),
                                 "env": env_vars['API_ENV'],
                                 "event": "set",
                                 "key": set_key,
-                                "name": splitted_key[3],
-                                "type": splitted_key[1],
+                                "name": splitted_key[4],
+                                "type": splitted_key[2],
                             })
                             # Send the message to all connected WebSocket clients
                             await notify_clients(message)
