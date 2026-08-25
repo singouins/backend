@@ -28,81 +28,108 @@ for var, value in env_vars.items():
     logger.debug(f"{var}: {value}")
 
 CLIENTS = set()
+# Backoff (seconds) used to reconnect a listener after a Redis connection drop
+RECONNECT_DELAY = 1
+RECONNECT_DELAY_MAX = 30
 
 
 async def listen_to_broadcast() -> None:
-    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
-    pubsub = r.pubsub()
-    await pubsub.subscribe(env_vars['PS_BROADCAST'])
+    delay = RECONNECT_DELAY
+    while True:
+        try:
+            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
+            pubsub = r.pubsub()
+            await pubsub.subscribe(env_vars['PS_BROADCAST'])
+            delay = RECONNECT_DELAY
 
-    # Continuously listen for messages
-    async for message in pubsub.listen():
-        logger.trace(f'Pub/Sub received: {message}')
-        if message['type'] == 'message':
-            data = message['data'].decode('utf-8')
-            # Send the message to all connected WebSocket clients
-            await notify_clients(data)
+            # Continuously listen for messages
+            async for message in pubsub.listen():
+                logger.trace(f'Pub/Sub received: {message}')
+                if message['type'] == 'message':
+                    data = message['data'].decode('utf-8')
+                    # Send the message to all connected WebSocket clients
+                    await notify_clients(data)
+        except redis.RedisError as e:
+            logger.error(f'listen_to_broadcast: Redis connection lost ({e}), reconnecting in {delay}s')  # noqa: E501
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RECONNECT_DELAY_MAX)
 
 
 async def listen_to_expired() -> None:
-    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
-    pubsub = r.pubsub()
-    await pubsub.psubscribe(env_vars['PS_EXPIRE'])
+    delay = RECONNECT_DELAY
+    while True:
+        try:
+            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
+            pubsub = r.pubsub()
+            await pubsub.psubscribe(env_vars['PS_EXPIRE'])
+            delay = RECONNECT_DELAY
 
-    # Continuously listen for messages
-    async for message in pubsub.listen():
-        logger.trace(f'Pub/Sub received: {message}')
-        if message['type'] == 'pmessage':
-            expired_key = message['data'].decode()
-            # Check we match the API_ENV
-            if expired_key.startswith(env_vars['API_ENV']):
-                logger.debug(f"Key expired: {expired_key}")
-                # We split the key to grab the elements
-                splitted_key = expired_key.split(':')
-                # Build the message
-                message = json.dumps({
-                    "creature": splitted_key[2],
-                    "date": datetime.datetime.utcnow().isoformat(),
-                    "env": env_vars['API_ENV'],
-                    "event": "expired",
-                    "key": expired_key,
-                    "name": splitted_key[3],
-                    "type": splitted_key[1],
-                })
-                # Send the message to all connected WebSocket clients
-                await notify_clients(message)
+            # Continuously listen for messages
+            async for message in pubsub.listen():
+                logger.trace(f'Pub/Sub received: {message}')
+                if message['type'] == 'pmessage':
+                    expired_key = message['data'].decode()
+                    # Check we match the API_ENV
+                    if expired_key.startswith(env_vars['API_ENV']):
+                        logger.debug(f"Key expired: {expired_key}")
+                        # We split the key to grab the elements
+                        splitted_key = expired_key.split(':')
+                        # Build the message
+                        message = json.dumps({
+                            "creature": splitted_key[2],
+                            "date": datetime.datetime.utcnow().isoformat(),
+                            "env": env_vars['API_ENV'],
+                            "event": "expired",
+                            "key": expired_key,
+                            "name": splitted_key[3],
+                            "type": splitted_key[1],
+                        })
+                        # Send the message to all connected WebSocket clients
+                        await notify_clients(message)
+        except redis.RedisError as e:
+            logger.error(f'listen_to_expired: Redis connection lost ({e}), reconnecting in {delay}s')  # noqa: E501
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RECONNECT_DELAY_MAX)
 
 
 async def listen_to_set() -> None:
-    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
-    pubsub = r.pubsub()
-    await pubsub.psubscribe(env_vars['PS_SET'])
+    delay = RECONNECT_DELAY
+    while True:
+        try:
+            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
+            pubsub = r.pubsub()
+            await pubsub.psubscribe(env_vars['PS_SET'])
+            delay = RECONNECT_DELAY
 
-    # Continuously listen for messages
-    async for message in pubsub.listen():
-        logger.trace(f'Pub/Sub received: {message}')
-        if message['type'] == 'pmessage':
-            set_key = message['data'].decode()
-            # Check we match the API_ENV
-            if set_key.startswith(env_vars['API_ENV']):
-                # We split the key to grab the elements
-                splitted_key = set_key.split(':')
-                # Build the message
-                try:
-                    message = json.dumps({
-                        "creature": splitted_key[2],
-                        "date": datetime.datetime.utcnow().isoformat(),
-                        "env": env_vars['API_ENV'],
-                        "event": "set",
-                        "key": set_key,
-                        "name": splitted_key[3],
-                        "type": splitted_key[1],
-                    })
-                    # Send the message to all connected WebSocket clients
-                    await notify_clients(message)
-                    logger.debug(f"Key set: {set_key}")
-                except Exception as e:
-                    logger.trace(f"Key format not expected [{e}]")
+            # Continuously listen for messages
+            async for message in pubsub.listen():
+                logger.trace(f'Pub/Sub received: {message}')
+                if message['type'] == 'pmessage':
+                    set_key = message['data'].decode()
+                    # Check we match the API_ENV
+                    if set_key.startswith(env_vars['API_ENV']):
+                        # We split the key to grab the elements
+                        splitted_key = set_key.split(':')
+                        # Build the message
+                        try:
+                            message = json.dumps({
+                                "creature": splitted_key[2],
+                                "date": datetime.datetime.utcnow().isoformat(),
+                                "env": env_vars['API_ENV'],
+                                "event": "set",
+                                "key": set_key,
+                                "name": splitted_key[3],
+                                "type": splitted_key[1],
+                            })
+                            # Send the message to all connected WebSocket clients
+                            await notify_clients(message)
+                            logger.debug(f"Key set: {set_key}")
+                        except Exception as e:
+                            logger.trace(f"Key format not expected [{e}]")
+        except redis.RedisError as e:
+            logger.error(f'listen_to_set: Redis connection lost ({e}), reconnecting in {delay}s')
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RECONNECT_DELAY_MAX)
 
 
 async def notify_clients(message: str) -> None:
@@ -113,9 +140,9 @@ async def notify_clients(message: str) -> None:
             )
 
 
-async def websocket_handler(websocket: ServerConnection, path: str) -> None:
+async def websocket_handler(websocket: ServerConnection) -> None:
     # Register client
-    real_ip = websocket.request_headers['X-Real-IP']
+    real_ip = websocket.request.headers['X-Real-IP']
     logger.info(f'Client connection OK (@IP:{real_ip})')
 
     CLIENTS.add(websocket)
