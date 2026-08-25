@@ -32,4 +32,4 @@ WORKDIR /code
 USER ws
 
 # Entry point
-ENTRYPOINT ["/code/main.py"]
+ENTRYPOINT ["python3", "/code/main.py"]

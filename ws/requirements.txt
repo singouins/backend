@@ -4,8 +4,6 @@
 #
 #    pip-compile --strip-extras requirements.in
 #
-asyncio==4.0.0
-    # via -r requirements.in
 loguru==0.7.3
     # via -r requirements.in
 redis==8.1.0
