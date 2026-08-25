@@ -160,7 +160,9 @@ async def notify_clients(message: str) -> None:
 
 async def websocket_handler(websocket: ServerConnection) -> None:
     # Register client
-    real_ip = websocket.request.headers['X-Real-IP']
+    # nginx always sets this header today, but don't let a missing header
+    # (e.g. a future direct/bypassing connection) drop the connection.
+    real_ip = websocket.request.headers.get('X-Real-IP', 'unknown')
     logger.info(f'Client connection OK (@IP:{real_ip})')
 
     CLIENTS.add(websocket)
