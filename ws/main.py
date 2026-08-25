@@ -6,6 +6,7 @@ import datetime
 import json
 import redis.asyncio as redis
 import os
+import signal
 import sys
 import websockets
 
@@ -182,6 +183,14 @@ async def websocket_handler(websocket: ServerConnection) -> None:
 
 
 async def main() -> None:
+    # Stop on SIGTERM/SIGINT instead of dying mid-flight: close the server
+    # (which sends a clean 1001/going-away close to every connected client)
+    # before the process exits.
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop_event.set)
+
     # Start WebSocket server
     logger.trace(f"WebSocket server start >> ({env_vars['WSS_HOST']}:{env_vars['WSS_PORT']})")
     ws_server = await websockets.serve(
@@ -193,13 +202,23 @@ async def main() -> None:
         ping_timeout=WS_PING_TIMEOUT,
         )
     logger.debug('WebSocket server start OK')
-    logger.debug('Asyncio.gather start >>')
-    await asyncio.gather(
-        ws_server.wait_closed(),
-        listen_to_broadcast(),
-        listen_to_expired(),
-        listen_to_set(),
-        )
+
+    listeners = [
+        asyncio.create_task(listen_to_broadcast()),
+        asyncio.create_task(listen_to_expired()),
+        asyncio.create_task(listen_to_set()),
+        ]
+
+    await stop_event.wait()
+
+    logger.info('Shutdown signal received, closing...')
+    ws_server.close()
+    await ws_server.wait_closed()
+
+    for task in listeners:
+        task.cancel()
+    await asyncio.gather(*listeners, return_exceptions=True)
+    logger.info('Shutdown complete')
 
 
 if __name__ == "__main__":
