@@ -43,10 +43,10 @@ RECONNECT_DELAY_MAX = 30
 
 
 async def listen_to_broadcast() -> None:
+    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
     delay = RECONNECT_DELAY
     while True:
         try:
-            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
             pubsub = r.pubsub()
             await pubsub.subscribe(env_vars['PS_BROADCAST'])
             delay = RECONNECT_DELAY
@@ -65,10 +65,10 @@ async def listen_to_broadcast() -> None:
 
 
 async def listen_to_expired() -> None:
+    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
     delay = RECONNECT_DELAY
     while True:
         try:
-            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
             pubsub = r.pubsub()
             await pubsub.psubscribe(env_vars['PS_EXPIRE'])
             delay = RECONNECT_DELAY
@@ -102,10 +102,10 @@ async def listen_to_expired() -> None:
 
 
 async def listen_to_set() -> None:
+    r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
     delay = RECONNECT_DELAY
     while True:
         try:
-            r = redis.Redis(host=env_vars['REDIS_HOST'], port=env_vars['REDIS_PORT'], db=env_vars['REDIS_BASE'])  # noqa: E501
             pubsub = r.pubsub()
             await pubsub.psubscribe(env_vars['PS_SET'])
             delay = RECONNECT_DELAY
