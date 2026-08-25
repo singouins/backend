@@ -6,18 +6,27 @@ import datetime
 import json
 import redis.asyncio as redis
 import os
+import sys
 import websockets
 
 from loguru import logger
 from websockets import ServerConnection
 
+# API_ENV has no safe default: it prefixes the broadcast channel name and
+# every keyspace key filter, so a missing/empty value must fail fast here
+# rather than crash later with a confusing AttributeError/TypeError.
+API_ENV = os.environ.get("API_ENV")
+if not API_ENV:
+    logger.error("API_ENV environment variable is required and must not be empty")
+    sys.exit(1)
+
 # Grab the environment variables
 env_vars = {
-    "API_ENV": os.environ.get("API_ENV", None),
+    "API_ENV": API_ENV,
     "REDIS_HOST": os.environ.get("REDIS_HOST", '127.0.0.1'),
     "REDIS_PORT": int(os.environ.get("REDIS_PORT", 6379)),
     "REDIS_BASE": int(os.environ.get("REDIS_BASE", 0)),
-    "PS_BROADCAST": os.environ.get("PS_BROADCAST", f'ws-broadcast-{os.environ.get("API_ENV", None).lower()}'),  # noqa: E501
+    "PS_BROADCAST": os.environ.get("PS_BROADCAST", f'ws-broadcast-{API_ENV.lower()}'),
     "PS_EXPIRE": os.environ.get("PS_EXPIRE", '__keyevent@0__:expired'),
     "PS_SET": os.environ.get("PS_SET", '__keyevent@0__:set'),
     "WSS_HOST": os.environ.get('WSS_HOST', '0.0.0.0'),
