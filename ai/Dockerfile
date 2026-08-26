@@ -29,6 +29,11 @@ COPY --chown=ai:ai /ai/main.py      /code/main.py
 COPY --chown=ai:ai /ai/variables.py /code/variables.py
 COPY --chown=ai:ai /mongo           /code/mongo
 
+# ai/utils/redis.py is a symlink to _redis/redis.py for local dev; COPY
+# preserves symlinks as-is rather than following them, so overwrite it here
+# with the real file to avoid a dangling symlink in the image.
+COPY --chown=ai:ai /_redis/redis.py /code/utils/redis.py
+
 # Set working directory
 WORKDIR /code
 
