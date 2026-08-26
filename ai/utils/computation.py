@@ -10,16 +10,18 @@ from mongo.models.Creature import CreatureDocument
 
 def closest_player_from_me(self):
     """
-    Fetchs the closest Player from self.
+    Fetches the closest Player from self.
 
-    Parameters: None
+    Parameters:
+        - self: Mob instance (the calling Creature's thread)
 
     Returns:
-        - CreatureDocument
+        - CreatureDocument, or None if the query failed or no Player is
+          in range
     """
 
     # Grab the view
-    range = 4 + round(self.stats.total.p / 50)
+    range = 4 + round(self.creature.stats.total.p / 50)
 
     maxx  = self.creature.x + range
     minx  = self.creature.x - range
@@ -84,7 +86,9 @@ def next_coords_to_creature(self, CreatureTarget):
     Finds the next hop towards a Creature.
 
     Parameters:
-        - CreatureTarget: RedisCreature Object
+        - self: Mob instance (the calling Creature's thread)
+        - CreatureTarget: CreatureDocument (or any object exposing x/y
+          attributes)
 
     Returns: (x, y)
     """
@@ -123,10 +127,11 @@ def is_coords_empty(self, x, y):
     Checks if a set of coordinates is empty or not.
 
     Parameters:
+        - self: Mob instance (the calling Creature's thread)
         - x: INT
         - y: INT
 
-    Returns: bool()
+    Returns: bool, or None if the query failed
     """
     try:
         occupied = CreatureDocument.objects.filter(x=x, y=y).count() > 0

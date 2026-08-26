@@ -59,7 +59,7 @@ class Mob(ABC, threading.Thread):
     def move(self):
         if self.pa.blue > 4 and randint(0, 1):
             logger.success(f'{self.logh} | Will move')
-            # self.set_pos()
+            self.set_pos()
         else:
             logger.warning(f'{self.logh} | Will not move')
 

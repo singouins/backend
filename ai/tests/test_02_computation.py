@@ -14,15 +14,27 @@ raises, so the function always reported every tile as occupied).
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from utils.computation import is_coords_empty, next_coords_to_creature
+from utils.computation import (
+    closest_player_from_me,
+    is_coords_empty,
+    next_coords_to_creature,
+    )
 
 
-def _mob(x, y):
-    return SimpleNamespace(creature=SimpleNamespace(x=x, y=y), logh='[test]')
+def _mob(x, y, mob_id='self-id', p=0):
+    creature = SimpleNamespace(
+        x=x, y=y, id=mob_id,
+        stats=SimpleNamespace(total=SimpleNamespace(p=p)),
+        )
+    return SimpleNamespace(creature=creature, logh='[test]')
 
 
 def _target(x, y):
     return SimpleNamespace(x=x, y=y)
+
+
+def _creature(x, y, race, creature_id):
+    return SimpleNamespace(x=x, y=y, race=race, id=creature_id)
 
 
 # next_coords_to_creature
@@ -73,3 +85,45 @@ def test_is_coords_empty_returns_none_on_query_error():
     with patch('utils.computation.CreatureDocument') as MockDoc:
         MockDoc.objects.filter.side_effect = Exception('boom')
         assert is_coords_empty(mob, x=1, y=1) is None
+
+
+# closest_player_from_me
+#
+# Regression coverage for the self.stats bug: `self` here is the Mob
+# thread instance, which only ever sets self.creature/self.instance/
+# self.pa/self.logh - self.stats does not exist. This used to crash with
+# AttributeError as soon as the range calculation ran.
+
+def test_closest_player_from_me_uses_creature_stats_not_self_stats():
+    # p=100 -> range = 4 + round(100/50) = 6. Would raise AttributeError
+    # before the fix (self.stats.total.p instead of self.creature.stats.total.p).
+    mob = _mob(x=0, y=0, p=100)
+    target = _target(x=1, y=1)
+    with patch('utils.computation.CreatureDocument') as MockDoc:
+        qs = MockDoc.objects.filter.return_value
+        qs.count.return_value = 1
+        qs.get.return_value = target
+        assert closest_player_from_me(mob) is target
+
+
+def test_closest_player_from_me_picks_the_nearest_player_and_skips_self_and_npcs():
+    mob = _mob(x=0, y=0, mob_id='self-id')
+    me = _creature(x=0, y=0, race=14, creature_id='self-id')       # self - must be skipped
+    other_npc = _creature(x=1, y=0, race=14, creature_id='npc-id')  # another NPC - must be skipped
+    far_player = _creature(x=10, y=10, race=1, creature_id='far-id')
+    near_player = _creature(x=1, y=1, race=1, creature_id='near-id')
+
+    with patch('utils.computation.CreatureDocument') as MockDoc:
+        qs = MockDoc.objects.filter.return_value
+        qs.count.return_value = 4
+        qs.__iter__.return_value = iter([me, other_npc, far_player, near_player])
+        assert closest_player_from_me(mob) is near_player
+
+
+def test_closest_player_from_me_returns_none_when_nothing_in_range():
+    mob = _mob(x=0, y=0)
+    with patch('utils.computation.CreatureDocument') as MockDoc:
+        qs = MockDoc.objects.filter.return_value
+        qs.count.return_value = 0
+        qs.__iter__.return_value = iter([])
+        assert closest_player_from_me(mob) is None

@@ -9,6 +9,18 @@ from variables import env_vars
 
 
 def resolver_generic_request_get(path, code=200):
+    """
+    Sends a GET request to the Resolver.
+
+    Parameters:
+        - path: STR - path appended to RESOLVER_URL (e.g. "/check")
+        - code: INT - intended expected HTTP status code; currently unused,
+          check_response() is always called with 200 regardless of this
+          value
+
+    Returns: dict (parsed JSON body), or None on request failure or an
+    unexpected response
+    """
     try:
         response = requests.get(f"{env_vars['RESOLVER_URL']}{path}", timeout=(1, 1))
     except Exception as e:
@@ -19,11 +31,22 @@ def resolver_generic_request_get(path, code=200):
 
 
 def resolver_move(self, targetx, targety):
+    """
+    Requests the Resolver to move a Creature to a given tile.
+
+    Parameters:
+        - self: Mob instance (the calling Creature's thread)
+        - targetx: INT - destination tile X
+        - targety: INT - destination tile Y
+
+    Returns: dict (parsed JSON body) on success, or None on request
+    failure or an unexpected response
+    """
     body = {
         "fightEvent": {
             "name": "RegularMovesFightClass",
             "type": 3,
-            "actor": self.creature.id,
+            "actor": str(self.creature.id),
             "params": {
                 "destinationType": "tile",
                 "destination": None,
@@ -45,11 +68,23 @@ def resolver_move(self, targetx, targety):
 
 
 def resolver_basic_attack(self, target):
+    """
+    Requests the Resolver to perform a basic attack against a target
+    Creature.
+
+    Parameters:
+        - self: Mob instance (the calling Creature's thread)
+        - target: dict - must contain an 'id' key identifying the target
+          Creature
+
+    Returns: dict (parsed JSON body) on success, or None on request
+    failure or an unexpected response
+    """
     body = {
         "fightEvent": {
             "name": "RegularAttacksFightClass",
             "type": 0,
-            "actor": self.creature.id,
+            "actor": str(self.creature.id),
             "params": {
                 "type": "target",
                 "destinationType": "creature",
@@ -78,6 +113,17 @@ def resolver_basic_attack(self, target):
 
 
 def check_response(response, code):
+    """
+    Validates an HTTP response against an expected status code and parses
+    its JSON body.
+
+    Parameters:
+        - response: requests.Response
+        - code: INT - expected HTTP status code
+
+    Returns: dict (parsed JSON body) if response.status_code == code and a
+    body is present, else None
+    """
     logger.trace('HTTP response Headers:' + str(response.headers))
     logger.trace('HTTP response Code:' + str(response.status_code))
     logger.trace('HTTP response Body:' + str(response.text))
