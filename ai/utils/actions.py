@@ -72,8 +72,9 @@ def creature_pop(creature: str, threads: list):
             t = Fungus(creatureuuid=Creature.id)
             THREAD_COUNT_FUNGUS.inc()      # Increment the Fungus thread count
         else:
-            logger.warning(creature)
-            pass
+            THREAD_COUNT_TOTAL.dec()       # No thread was actually created
+            logger.warning(f'Creature pop KO | {name} (Unhandled race:{Creature.race})')
+            return False
 
         t.start()
         threads.append(t)
