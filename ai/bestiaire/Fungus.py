@@ -7,7 +7,6 @@ from bestiaire._Mob import Mob
 
 class Fungus(Mob):
     def __init__(self, creatureuuid: str):
-        super(Mob, self).__init__()
         Mob.__init__(self, creatureuuid)
 
     def run(self):

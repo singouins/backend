@@ -23,7 +23,7 @@ class Mob(ABC, threading.Thread):
 
     @abstractmethod
     def __init__(self, creatureuuid: str):
-        super(threading.Thread, self).__init__()
+        threading.Thread.__init__(self)
 
         # We replicate Creature attibutes into Mob object
         try:
