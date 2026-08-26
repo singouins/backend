@@ -3,12 +3,22 @@
 import os
 
 from loguru import logger
-from prometheus_client import Gauge
+from prometheus_client import Gauge, Histogram
 
 # Prometheus metrics
 THREAD_COUNT_TOTAL = Gauge('thread_count_total', 'Number of threads (total)')
 THREAD_COUNT_FUNGUS = Gauge('thread_count_fungus', 'Number of Fungus threads')
 THREAD_COUNT_SALAMANDER = Gauge('thread_count_salamander', 'Number of Salamander threads')
+CREATURE_TICK_DURATION = Histogram(
+    'creature_tick_seconds',
+    'Time spent processing one creature tick (excludes the deliberate sleep)',
+    ['species'],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
+    )
+
+# Fraction of an Instance's tick budget a single creature's processing can
+# consume before we log a "getting close to blowing the tick" warning.
+TICK_OVERRUN_THRESHOLD = 0.8
 
 # Grab the environment variables
 env_vars = {

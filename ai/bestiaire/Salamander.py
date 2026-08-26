@@ -1,8 +1,11 @@
 # -*- coding: utf8 -*-
 
-# from loguru import logger
+import time
+
+from loguru import logger
 
 from bestiaire._Mob import Mob
+from variables import CREATURE_TICK_DURATION, TICK_OVERRUN_THRESHOLD
 
 
 class Salamander(Mob):
@@ -11,12 +14,22 @@ class Salamander(Mob):
 
     def run(self):
         while self.creature.hp.current > 0:
+            tick_start = time.monotonic()
+
             self.get_pa()
             self.get_creature()
             self.status()
 
             # MOVE
             self.move()
+
+            elapsed = time.monotonic() - tick_start
+            CREATURE_TICK_DURATION.labels(species=type(self).__name__).observe(elapsed)
+            if elapsed > self.instance.tick * TICK_OVERRUN_THRESHOLD:
+                logger.warning(
+                    f'{self.logh} | Tick overrun risk '
+                    f'({elapsed:.3f}s / {self.instance.tick}s budget)'
+                    )
 
             """
             # BASIC ATTACK
