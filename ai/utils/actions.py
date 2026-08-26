@@ -95,7 +95,7 @@ def creature_kill(creature: str, threads: list):
             if str(t.creature.id) == creature['_id']:
                 # We got the dead Creature
                 logger.trace(f'Creature to kill found: {name}')
-                t.creature.hp = 0
+                t.creature.hp.current = 0
 
                 THREAD_COUNT_TOTAL.dec()           # Decrement total thread count when done
                 if t.creature.race in [11, 12, 13, 14]:
