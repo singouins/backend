@@ -70,7 +70,7 @@ def resolver_basic_attack(self, target):
         logger.error(f'Request Query KO [{e}]')
         return None
     else:
-        check_response(response, 200)
+        return check_response(response, 200)
 
 #
 # Checkers

@@ -129,13 +129,9 @@ def is_coords_empty(self, x, y):
     Returns: bool()
     """
     try:
-        CreatureDocument.objects.filter(x=x, y=y)
-    except CreatureDocument.DoesNotExist:
-        # No Creature is on this set of coordinates
-        return True
+        occupied = CreatureDocument.objects.filter(x=x, y=y).count() > 0
     except Exception as e:
         logger.error(f'{self.logh} | CreatureDocument Query KO [{e}]')
         return None
     else:
-        # A Creature is on this set of coordinates
-        return False
+        return not occupied

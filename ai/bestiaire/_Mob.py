@@ -109,7 +109,7 @@ class Mob(ABC, threading.Thread):
 
         for pa_color, pa_data in pa_info.items():
             if r.exists(pa_data['key']):
-                pa_info[pa_data]['current_pa'] = int(
+                pa_info[pa_color]['current_pa'] = int(
                     round(pa_data['max_ttl'] - abs(r.ttl(pa_data['key'])) / PA_DURATION)
                     )
 
@@ -144,7 +144,7 @@ class Mob(ABC, threading.Thread):
         # logger.info(f'x:{nextx}, y:{nexty}')
 
         # Collision check
-        if not is_coords_empty(x=nextx, y=nexty):
+        if not is_coords_empty(self, x=nextx, y=nexty):
             # There is a Creature on these coordinates
             logger.debug(f"{self.logh} | Move KO | (Tile busy @({nextx}, {nexty}))")
             return
@@ -174,12 +174,13 @@ class Mob(ABC, threading.Thread):
         logger.debug(
             f"{self.logh} | Move >> | "
             f"from (x:{self.creature.x},y:{self.creature.y}) "
-            f"to (x:{nextx},y:{nextx}))"
+            f"to (x:{nextx},y:{nexty}))"
             )
         try:
             payload = resolver_move(self, nextx, nexty)
         except Exception as e:
             logger.error(f'{self.logh} | Request KO [{e}]')
+            return
 
         if payload is None or 'result' not in payload:
             # Here we have a weird answer from Resolver
