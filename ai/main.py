@@ -128,16 +128,22 @@ if __name__ == '__main__':
         if msg['type'] != 'pmessage':
             logger.trace(f"Message receive do not contains a pmessage ({msg})")
             continue
-        else:
+
+        # A single bad/unexpected message must not kill this loop - that
+        # would silently stop all future pop/kill/update processing while
+        # the Flask /check endpoint keeps reporting healthy.
+        try:
             data = json.loads(msg['data'])
 
-        if msg['channel'].decode() == env_vars['CREATURE_PATH']:
-            if data['action'] == 'pop':
-                creature_pop(data['creature'], threads)
-            elif data['action'] == 'kill':
-                creature_kill(data['creature'], threads)
-            elif data['action'] == 'update':
-                # Some shit happened to a Creature - need to update thread info
-                pass
-        else:
-            logger.warning(f"Message unknown (data:{data})")
+            if msg['channel'].decode() == env_vars['CREATURE_PATH']:
+                if data['action'] == 'pop':
+                    creature_pop(data['creature'], threads)
+                elif data['action'] == 'kill':
+                    creature_kill(data['creature'], threads)
+                elif data['action'] == 'update':
+                    # Some shit happened to a Creature - need to update thread info
+                    pass
+            else:
+                logger.warning(f"Message unknown (data:{data})")
+        except Exception as e:
+            logger.error(f"[core] Listener KO on message ({msg}) [{e}]")

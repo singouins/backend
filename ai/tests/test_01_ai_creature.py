@@ -169,3 +169,33 @@ def test_creature_pop_unknown_creature_is_ignored():
 
     time.sleep(WAIT_TIMEOUT / 2)
     assert not [t for t in _threads() if t['id'] == unknown_uuid]
+
+
+def test_listener_survives_malformed_messages(creature):
+    """
+    A single bad pub/sub message must not kill the main listener loop
+    (ai/main.py) - that would silently stop all future pop/kill/update
+    processing while /check keeps reporting healthy. Publish a couple of
+    ways a message can be malformed, then confirm a subsequent real pop
+    still works.
+    """
+    r.publish(CREATURE_PATH, 'this is not json at all {{{')
+    r.publish(
+        CREATURE_PATH,
+        json.dumps({
+            "action": 'pop',
+            # "creature" must be a JSON *string* (see _publish()) - sending
+            # a dict here used to crash json.loads() inside creature_pop().
+            "creature": {"_id": "not-a-real-uuid"},
+            })
+        )
+
+    _publish('pop', creature)
+    _wait_until(
+        lambda: [t for t in _threads() if t['id'] == str(CREATURE_UUID)]
+        )
+
+    _publish('kill', creature)
+    _wait_until(
+        lambda: not [t for t in _threads() if t['id'] == str(CREATURE_UUID)]
+        )
