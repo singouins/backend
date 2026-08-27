@@ -1,6 +1,7 @@
 # -*- coding: utf8 -*-
 
 import json
+import os
 import redis
 import yarqueue
 
@@ -8,16 +9,28 @@ from loguru import logger
 
 from variables import env_vars
 
+# Left unconfigured, redis-py defaults to a 100-connection pool that raises
+# MaxConnectionsError as soon as it's exhausted - fine at low concurrency,
+# but a service popping hundreds/thousands of concurrent workers (e.g. ai's
+# one-thread-per-creature model) can blow past that fast. A blocking pool
+# makes callers wait briefly for a free connection instead of failing
+# outright, and the size is tunable per-deployment via env var.
+REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', 500))
+REDIS_POOL_TIMEOUT = int(os.environ.get('REDIS_POOL_TIMEOUT', 5))
+
 try:
-    r = redis.StrictRedis(
+    pool = redis.BlockingConnectionPool(
         host=env_vars['REDIS_HOST'],
         port=env_vars['REDIS_PORT'],
-        db=env_vars['REDIS_BASE']
+        db=env_vars['REDIS_BASE'],
+        max_connections=REDIS_MAX_CONNECTIONS,
+        timeout=REDIS_POOL_TIMEOUT,
         )
+    r = redis.StrictRedis(connection_pool=pool)
 except Exception as e:
     logger.error(f'Redis Connection KO (r) [{e}]')
 else:
-    logger.debug('Redis Connection OK (r)')
+    logger.debug(f'Redis Connection OK (r) [max_connections:{REDIS_MAX_CONNECTIONS}]')
 
 
 def str2bool(value: str) -> bool:
