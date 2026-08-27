@@ -108,10 +108,16 @@ class Mob(ABC, threading.Thread):
             self.pa = PA()
 
         for pa_color, pa_data in pa_info.items():
-            if r.exists(pa_data['key']):
-                pa_info[pa_color]['current_pa'] = int(
-                    round(pa_data['max_ttl'] - abs(r.ttl(pa_data['key'])) / PA_DURATION)
-                    )
+            try:
+                if r.exists(pa_data['key']):
+                    pa_info[pa_color]['current_pa'] = int(
+                        round(pa_data['max_ttl'] - abs(r.ttl(pa_data['key'])) / PA_DURATION)
+                        )
+            except Exception as e:
+                # Redis hiccup (pool exhaustion, transient disconnect, ...):
+                # fall back to the max_pa default already in pa_data rather
+                # than letting this crash the whole Creature thread.
+                logger.error(f'{self.logh} | Redis PA Query KO ({pa_color}) [{e}]')
 
             # Dynamically assign the current_pa to self.pa based on the pa_type
             setattr(self.pa, pa_color, pa_data['current_pa'])
