@@ -14,10 +14,19 @@ from utils.redis import r
 
 from variables import (
     env_vars,
+    CREATURE_THREAD_DIED_UNEXPECTEDLY,
     THREAD_COUNT_FUNGUS,
     THREAD_COUNT_SALAMANDER,
     THREAD_COUNT_TOTAL,
     )
+
+
+def _decrement_thread_counts(t):
+    THREAD_COUNT_TOTAL.dec()
+    if t.creature.race in [11, 12, 13, 14]:
+        THREAD_COUNT_SALAMANDER.dec()
+    elif t.creature.race in [15, 16]:
+        THREAD_COUNT_FUNGUS.dec()
 
 
 def creature_init():
@@ -98,12 +107,7 @@ def creature_kill(creature: str, threads: list):
                 logger.trace(f'Creature to kill found: {name}')
                 t.creature.hp.current = 0
 
-                THREAD_COUNT_TOTAL.dec()           # Decrement total thread count when done
-                if t.creature.race in [11, 12, 13, 14]:
-                    THREAD_COUNT_SALAMANDER.dec()  # Decrement Salamander thread count when done
-                elif t.creature.race in [15, 16]:
-                    THREAD_COUNT_FUNGUS.dec()      # Decrement Fungus thread count when done
-
+                _decrement_thread_counts(t)
                 threads.remove(t)
                 killed = True
     except Exception as e:
@@ -116,3 +120,35 @@ def creature_kill(creature: str, threads: list):
         else:
             logger.warning(f"Creature kill KO | {name} (NotFound in threads)")
             return False
+
+
+def reconcile_threads(threads: list) -> int:
+    """
+    Sweeps the threads list for entries whose underlying Thread has died
+    without going through creature_kill() (i.e. crashed instead of being
+    properly despawned), so bookkeeping (the threads list, /threads,
+    thread_count_* gauges) can't silently drift from reality the way it
+    did before this existed. Does not attempt to respawn - a thread dying
+    unexpectedly means something is actually broken and deserves a human
+    looking at the logs, not a silent auto-retry that could mask a
+    crash loop.
+
+    Parameters:
+        - threads: list of live Mob instances (mutated in place)
+
+    Returns: number of dead entries pruned
+    """
+    pruned = 0
+    for t in list(threads):
+        if t.is_alive():
+            continue
+
+        name = f"[{t.creature.id}] {t.creature.name}"
+        logger.warning(f'Creature thread died unexpectedly | {name}')
+
+        CREATURE_THREAD_DIED_UNEXPECTEDLY.labels(species=type(t).__name__).inc()
+        _decrement_thread_counts(t)
+        threads.remove(t)
+        pruned += 1
+
+    return pruned

@@ -5,7 +5,7 @@ import time
 from loguru import logger
 
 from bestiaire._Mob import Mob
-from variables import CREATURE_TICK_DURATION, TICK_OVERRUN_THRESHOLD
+from variables import CREATURE_TICK_DURATION, env_vars
 
 
 class Salamander(Mob):
@@ -25,7 +25,7 @@ class Salamander(Mob):
 
             elapsed = time.monotonic() - tick_start
             CREATURE_TICK_DURATION.labels(species=type(self).__name__).observe(elapsed)
-            if elapsed > self.instance.tick * TICK_OVERRUN_THRESHOLD:
+            if elapsed > self.instance.tick * env_vars['TICK_OVERRUN_THRESHOLD']:
                 logger.warning(
                     f'{self.logh} | Tick overrun risk '
                     f'({elapsed:.3f}s / {self.instance.tick}s budget)'

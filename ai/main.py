@@ -4,13 +4,14 @@
 import json
 import os
 import threading
+import time
 
 from flask import Flask, jsonify
 from loguru import logger
 from prometheus_client import start_http_server
 
 from utils.redis import r, redis
-from utils.actions import creature_init, creature_kill, creature_pop
+from utils.actions import creature_init, creature_kill, creature_pop, reconcile_threads
 from utils.requests import resolver_generic_request_get
 
 from variables import env_vars
@@ -96,6 +97,14 @@ def start_prometheus_server():
     start_http_server(8000)  # Expose metrics on port 8000
 
 
+def reconcile_loop(threads, interval):
+    while True:
+        time.sleep(interval)
+        pruned = reconcile_threads(threads)
+        if pruned:
+            logger.warning(f'[core] Reconciliation pruned {pruned} dead Creature thread(s)')
+
+
 if __name__ == '__main__':
     # Start the Flask server in a separate thread
     flask_thread = threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000))
@@ -109,6 +118,13 @@ if __name__ == '__main__':
 
     # Initialize the Threads with existing Creatures in DB
     creature_init()
+
+    # Periodically sweep for threads that died without going through
+    # creature_kill(), so bookkeeping can't silently drift from reality
+    reconcile_thread = threading.Thread(
+        target=reconcile_loop, args=(threads, env_vars['RECONCILE_INTERVAL']), daemon=True,
+        )
+    reconcile_thread.start()
 
     # We receive the events from Redis
     for msg in pubsub.listen():
