@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import asyncio
 import json
 
 from loguru import logger
@@ -29,11 +30,14 @@ def _decrement_thread_counts(t):
         THREAD_COUNT_FUNGUS.dec()
 
 
-def creature_init():
+async def creature_init():
     try:
-        # We Initialize with ALL the existing NPC Creatures in an instance
+        # We Initialize with ALL the existing NPC Creatures in an instance.
+        # mongoengine QuerySets are lazy - materialize the list (the actual
+        # blocking network I/O) inside the thread, not just the query
+        # construction, or iterating it below would block the event loop.
         query = (Q(instance__exists=True) & Q(race__gt=10))
-        Creatures = CreatureDocument.objects(query)
+        Creatures = await asyncio.to_thread(lambda: list(CreatureDocument.objects(query)))
     except CreatureDocument.DoesNotExist:
         logger.debug("[Initialization] Skipped (no Creatures fetched)")
     except Exception as e:
@@ -45,7 +49,7 @@ def creature_init():
             # Like a lazy ass, we publish it into the channel
             # to be treated in the listen() code
             try:
-                r.publish(
+                await r.publish(
                     env_vars['CREATURE_PATH'],
                     json.dumps({
                         "action": 'pop',
@@ -59,14 +63,16 @@ def creature_init():
         logger.debug("Creature Loading OK")
 
 
-def creature_pop(creature: str, threads: list):
+async def creature_pop(creature: str, threads: list):
     # We have to pop a new creature somewhere
     creature = json.loads(creature)
     logger.trace(f'pmessage["data"]: {creature}')
     name = f"[{creature['_id']}] {creature['name']}"
     # We check that it exists in MongoDB
     try:
-        Creature = CreatureDocument.objects(_id=creature['_id']).get()
+        Creature = await asyncio.to_thread(
+            lambda: CreatureDocument.objects(_id=creature['_id']).get()
+            )
     except CreatureDocument.DoesNotExist:
         logger.warning(f'Creature pop KO | {name} (NotFound in MongoDB)')
         return False
@@ -75,17 +81,17 @@ def creature_pop(creature: str, threads: list):
         logger.trace(f"We pop a {creature['name']}")
         THREAD_COUNT_TOTAL.inc()           # Increment the total thread count
         if Creature.race in [11, 12, 13, 14]:
-            t = Salamander(creatureuuid=Creature.id)
+            t = await asyncio.to_thread(Salamander, creatureuuid=Creature.id)
             THREAD_COUNT_SALAMANDER.inc()  # Increment the Salamander thread count
         elif Creature.race in [15, 16]:
-            t = Fungus(creatureuuid=Creature.id)
+            t = await asyncio.to_thread(Fungus, creatureuuid=Creature.id)
             THREAD_COUNT_FUNGUS.inc()      # Increment the Fungus thread count
         else:
             THREAD_COUNT_TOTAL.dec()       # No thread was actually created
             logger.warning(f'Creature pop KO | {name} (Unhandled race:{Creature.race})')
             return False
 
-        t.start()
+        t.task = asyncio.create_task(t.run())
         threads.append(t)
     except Exception as e:
         logger.error(f'Creature pop KO | {name} [{e}]')
@@ -106,6 +112,7 @@ def creature_kill(creature: str, threads: list):
                 # We got the dead Creature
                 logger.trace(f'Creature to kill found: {name}')
                 t.creature.hp.current = 0
+                t.task.cancel()
 
                 _decrement_thread_counts(t)
                 threads.remove(t)
@@ -124,11 +131,11 @@ def creature_kill(creature: str, threads: list):
 
 def reconcile_threads(threads: list) -> int:
     """
-    Sweeps the threads list for entries whose underlying Thread has died
-    without going through creature_kill() (i.e. crashed instead of being
-    properly despawned), so bookkeeping (the threads list, /threads,
+    Sweeps the threads list for entries whose underlying asyncio Task has
+    finished (returned, crashed, or was cancelled) without going through
+    creature_kill(), so bookkeeping (the threads list, /threads,
     thread_count_* gauges) can't silently drift from reality the way it
-    did before this existed. Does not attempt to respawn - a thread dying
+    did before this existed. Does not attempt to respawn - a task dying
     unexpectedly means something is actually broken and deserves a human
     looking at the logs, not a silent auto-retry that could mask a
     crash loop.
@@ -140,11 +147,11 @@ def reconcile_threads(threads: list) -> int:
     """
     pruned = 0
     for t in list(threads):
-        if t.is_alive():
+        if not t.task.done():
             continue
 
         name = f"[{t.creature.id}] {t.creature.name}"
-        logger.warning(f'Creature thread died unexpectedly | {name}')
+        logger.warning(f'Creature task died unexpectedly | {name}')
 
         CREATURE_THREAD_DIED_UNEXPECTEDLY.labels(species=type(t).__name__).inc()
         _decrement_thread_counts(t)

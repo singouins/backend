@@ -4,7 +4,7 @@
 Fast, isolated unit tests for the reconciler in ai/utils/actions.py.
 
 No live Mongo/Redis/Flask stack needed - these exercise reconcile_threads()
-directly against fake Mob-like objects with a controllable is_alive(), the
+directly against fake Mob-like objects with a controllable task.done(), the
 same way test_02_computation.py mocks out CreatureDocument.
 """
 
@@ -13,15 +13,22 @@ from types import SimpleNamespace
 from utils.actions import reconcile_threads
 
 
+class FakeTask:
+    """Stand-in for the asyncio.Task stored as Mob.task, with a fixed done()."""
+
+    def __init__(self, done):
+        self._done = done
+
+    def done(self):
+        return self._done
+
+
 class FakeMob:
-    """Stand-in for a bestiaire Mob with a controllable is_alive()."""
+    """Stand-in for a bestiaire Mob with a controllable task.done()."""
 
     def __init__(self, creature_id, name, race, alive):
         self.creature = SimpleNamespace(id=creature_id, name=name, race=race)
-        self._alive = alive
-
-    def is_alive(self):
-        return self._alive
+        self.task = FakeTask(done=not alive)
 
 
 def test_reconcile_threads_prunes_only_dead_entries():

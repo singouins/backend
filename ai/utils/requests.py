@@ -1,14 +1,16 @@
 # -*- coding: utf8 -*-
 
 import json
-import requests
 
+import httpx
 from loguru import logger
 
 from variables import env_vars
 
+TIMEOUT = httpx.Timeout(connect=1, read=1, write=1, pool=1)
 
-def resolver_generic_request_get(path, code=200):
+
+async def resolver_generic_request_get(path, code=200):
     """
     Sends a GET request to the Resolver.
 
@@ -22,7 +24,8 @@ def resolver_generic_request_get(path, code=200):
     unexpected response
     """
     try:
-        response = requests.get(f"{env_vars['RESOLVER_URL']}{path}", timeout=(1, 1))
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.get(f"{env_vars['RESOLVER_URL']}{path}")
     except Exception as e:
         logger.error(f'Request Query KO [{e}]')
         return None
@@ -30,12 +33,12 @@ def resolver_generic_request_get(path, code=200):
         return check_response(response, 200)
 
 
-def resolver_move(self, targetx, targety):
+async def resolver_move(self, targetx, targety):
     """
     Requests the Resolver to move a Creature to a given tile.
 
     Parameters:
-        - self: Mob instance (the calling Creature's thread)
+        - self: Mob instance (the calling Creature)
         - targetx: INT - destination tile X
         - targety: INT - destination tile Y
 
@@ -59,7 +62,8 @@ def resolver_move(self, targetx, targety):
         }
 
     try:
-        response = requests.post(f"{env_vars['RESOLVER_URL']}/", json=body, timeout=(1, 1))
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.post(f"{env_vars['RESOLVER_URL']}/", json=body)
     except Exception as e:
         logger.error(f'Request Query KO [{e}]')
         return None
@@ -67,13 +71,13 @@ def resolver_move(self, targetx, targety):
         return check_response(response, 201)
 
 
-def resolver_basic_attack(self, target):
+async def resolver_basic_attack(self, target):
     """
     Requests the Resolver to perform a basic attack against a target
     Creature.
 
     Parameters:
-        - self: Mob instance (the calling Creature's thread)
+        - self: Mob instance (the calling Creature)
         - target: dict - must contain an 'id' key identifying the target
           Creature
 
@@ -100,7 +104,8 @@ def resolver_basic_attack(self, target):
         }
 
     try:
-        response = requests.post(f"{env_vars['RESOLVER_URL']}/", json=body, timeout=(1, 1))
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.post(f"{env_vars['RESOLVER_URL']}/", json=body)
     except Exception as e:
         logger.error(f'Request Query KO [{e}]')
         return None
@@ -118,7 +123,7 @@ def check_response(response, code):
     its JSON body.
 
     Parameters:
-        - response: requests.Response
+        - response: httpx.Response
         - code: INT - expected HTTP status code
 
     Returns: dict (parsed JSON body) if response.status_code == code and a
@@ -128,7 +133,10 @@ def check_response(response, code):
     logger.trace('HTTP response Code:' + str(response.status_code))
     logger.trace('HTTP response Body:' + str(response.text))
 
-    if response:
+    # requests.Response is falsy on 4xx/5xx; httpx.Response has no such
+    # override and is always truthy, so check explicitly instead of relying
+    # on either library's boolean-conversion behaviour.
+    if response is not None:
         if response.status_code == code:
             if response.text:
                 logger.trace(f'Request {response.status_code} OK ({json.loads(response.text)})')

@@ -1,7 +1,6 @@
 # -*- coding: utf8 -*-
 
-import time
-import threading
+import asyncio
 
 from abc import ABC, abstractmethod
 from loguru  import logger
@@ -19,11 +18,13 @@ from utils.computation import (
 from variables import env_vars
 
 
-class Mob(ABC, threading.Thread):
+class Mob(ABC):
 
     @abstractmethod
     def __init__(self, creatureuuid: str):
-        threading.Thread.__init__(self)
+        # Synchronous on purpose: constructed via asyncio.to_thread() from
+        # creature_pop() rather than being made async itself, so the sync
+        # mongoengine calls here don't need an async-aware constructor.
 
         # We replicate Creature attibutes into Mob object
         try:
@@ -45,7 +46,7 @@ class Mob(ABC, threading.Thread):
         self.logh = f'[{self.creature.id}] {self.creature.name}'
 
     @abstractmethod
-    def run(self):
+    async def run(self):
         pass
 
     @abstractmethod
@@ -56,16 +57,16 @@ class Mob(ABC, threading.Thread):
     def hit(self):
         pass
 
-    def move(self):
+    async def move(self):
         if self.pa.blue > 4 and randint(0, 1):
             logger.success(f'{self.logh} | Will move')
-            self.set_pos()
+            await self.set_pos()
         else:
             logger.warning(f'{self.logh} | Will not move')
 
-    def sleep(self):
+    async def sleep(self):
         logger.debug(f'{self.logh} | Will rest ({self.instance.tick}s)')
-        time.sleep(self.instance.tick)
+        await asyncio.sleep(self.instance.tick)
 
     def status(self):
         pas = f'[🔴 :{self.pa.red},🔵 :{self.pa.blue}] '
@@ -76,7 +77,7 @@ class Mob(ABC, threading.Thread):
 #
 #
 #
-    def get_pa(self):
+    async def get_pa(self):
         # Constants
         RED_PA_MAX = 16
         BLUE_PA_MAX = 8
@@ -109,22 +110,24 @@ class Mob(ABC, threading.Thread):
 
         for pa_color, pa_data in pa_info.items():
             try:
-                if r.exists(pa_data['key']):
+                if await r.exists(pa_data['key']):
                     pa_info[pa_color]['current_pa'] = int(
-                        round(pa_data['max_ttl'] - abs(r.ttl(pa_data['key'])) / PA_DURATION)
+                        round(pa_data['max_ttl'] - abs(await r.ttl(pa_data['key'])) / PA_DURATION)
                         )
             except Exception as e:
                 # Redis hiccup (pool exhaustion, transient disconnect, ...):
                 # fall back to the max_pa default already in pa_data rather
-                # than letting this crash the whole Creature thread.
+                # than letting this crash the whole Creature task.
                 logger.error(f'{self.logh} | Redis PA Query KO ({pa_color}) [{e}]')
 
             # Dynamically assign the current_pa to self.pa based on the pa_type
             setattr(self.pa, pa_color, pa_data['current_pa'])
 
-    def get_creature(self):
+    async def get_creature(self):
         try:
-            Creature = CreatureDocument.objects(_id=self.creature.id).get()
+            Creature = await asyncio.to_thread(
+                lambda: CreatureDocument.objects(_id=self.creature.id).get()
+                )
         except CreatureDocument.DoesNotExist:
             logger.debug("CreatureDocument Query KO (404)")
         except Exception as e:
@@ -136,9 +139,9 @@ class Mob(ABC, threading.Thread):
 #
 #
 #
-    def set_pos(self):
+    async def set_pos(self):
         # We check the closest PC in sight
-        CreatureTarget = closest_player_from_me(self)
+        CreatureTarget = await asyncio.to_thread(closest_player_from_me, self)
         if CreatureTarget:
             # We have a close PC in sight
             (nextx, nexty) = next_coords_to_creature(self, CreatureTarget)
@@ -150,7 +153,7 @@ class Mob(ABC, threading.Thread):
         # logger.info(f'x:{nextx}, y:{nexty}')
 
         # Collision check
-        if not is_coords_empty(self, x=nextx, y=nexty):
+        if not await asyncio.to_thread(is_coords_empty, self, x=nextx, y=nexty):
             # There is a Creature on these coordinates
             logger.debug(f"{self.logh} | Move KO | (Tile busy @({nextx}, {nexty}))")
             return
@@ -183,7 +186,7 @@ class Mob(ABC, threading.Thread):
             f"to (x:{nextx},y:{nexty}))"
             )
         try:
-            payload = resolver_move(self, nextx, nexty)
+            payload = await resolver_move(self, nextx, nexty)
         except Exception as e:
             logger.error(f'{self.logh} | Request KO [{e}]')
             return

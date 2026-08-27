@@ -12,16 +12,16 @@ class Fungus(Mob):
     def __init__(self, creatureuuid: str):
         Mob.__init__(self, creatureuuid)
 
-    def run(self):
+    async def run(self):
         while self.creature.hp.current > 0:
             tick_start = time.monotonic()
 
-            self.get_pa()
-            self.get_creature()
+            await self.get_pa()
+            await self.get_creature()
             self.status()
 
             # MOVE
-            self.move()
+            await self.move()
 
             elapsed = time.monotonic() - tick_start
             CREATURE_TICK_DURATION.labels(species=type(self).__name__).observe(elapsed)
@@ -67,7 +67,7 @@ class Fungus(Mob):
                         f"@({closest['x'], closest['y']}))"
                         )
         """
-            self.sleep()
+            await self.sleep()
         return
 
     def attack(self):
