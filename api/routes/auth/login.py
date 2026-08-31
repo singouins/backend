@@ -7,16 +7,15 @@ from flask_bcrypt import check_password_hash
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
-    decode_token,
     JWTManager,
     )
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 
 from mongo.models.User import UserDocument
+from utils.auth import register_access_token, register_refresh_token
 from utils.decorators import check_is_json
-from utils.redis import r
-from variables import env_vars, TOKEN_DURATION
+from variables import TOKEN_DURATION
 
 # Initialize JWTManager for Flask
 jwt = JWTManager()
@@ -64,13 +63,9 @@ def login():
     )
     refresh_token = create_refresh_token(identity=Login.username)
 
-    # Decode tokens to get the jti (JWT ID)
-    access_jti = decode_token(access_token)["jti"]
-    refresh_jti = decode_token(refresh_token)["jti"]
-
     # Store tokens in Redis for future revocation
-    r.set(f"{env_vars['API_ENV']}:auth:access_jti:{access_jti}", Login.username, ex=TOKEN_DURATION * 60)  # noqa: E501
-    r.set(f"{env_vars['API_ENV']}:auth:refresh_jti:{refresh_jti}", Login.username, ex=30 * 24 * 60 * 60)  # noqa: E501
+    register_access_token(Login.username, access_token)
+    register_refresh_token(Login.username, refresh_token)
 
     # Return tokens
     logger.trace("Access Token Query OK")

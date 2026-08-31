@@ -31,7 +31,59 @@ def test_singouins_auth_infos(jwt_header):
 def test_singouins_auth_refresh(jwt_header):
     response  = requests.post(f'{API_URL}/auth/refresh', headers=jwt_header['refresh'])
     assert response.status_code == 200
-    assert response.json().get("access_token")
+
+    new_access_token = response.json().get("access_token")
+    assert new_access_token
+    # A refreshed token must actually differ from the one used to log in ...
+    assert new_access_token != jwt_header['access']['Authorization'].split(' ')[1]
+
+
+def test_singouins_auth_refresh_token_is_usable(jwt_header):
+    # Regression test: a token minted by /auth/refresh must be usable on a
+    # protected route, not just returned. It used to 500 (AttributeError in
+    # the JWT blocklist loader) because refresh() never registered its new
+    # jti in Redis, so the revocation check found no key for it.
+    response = requests.post(f'{API_URL}/auth/refresh', headers=jwt_header['refresh'])
+    assert response.status_code == 200
+    new_access_token = response.json().get("access_token")
+
+    response = requests.get(
+        f'{API_URL}/auth/infos',
+        headers={"Authorization": f"Bearer {new_access_token}"},
+        )
+    assert response.status_code == 200
+    assert response.json().get("logged_in_as") == USER_NAME
+
+
+def test_singouins_auth_refresh_token_is_revocable():
+    # Regression test: a refreshed access token must go through the exact
+    # same revocation path as a login-issued one.
+    response = requests.post(f'{API_URL}/auth/login', json=AUTH_PAYLOAD)
+    refresh_header = {"Authorization": f"Bearer {response.json().get('refresh_token')}"}
+
+    response = requests.post(f'{API_URL}/auth/refresh', headers=refresh_header)
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+
+    response = requests.delete(f'{API_URL}/auth/logout', headers=access_header)
+    assert response.status_code == 200
+    assert 'JTI Revokation OK' in response.json().get("msg")
+
+    response = requests.get(f'{API_URL}/auth/infos', headers=access_header)
+    assert response.status_code == 401
+    assert 'revoked' in response.json().get("msg")
+
+
+def test_singouins_auth_infos_rejects_missing_token():
+    response = requests.get(f'{API_URL}/auth/infos')
+    assert response.status_code == 401
+
+
+def test_singouins_auth_infos_rejects_garbage_token():
+    response = requests.get(
+        f'{API_URL}/auth/infos',
+        headers={"Authorization": "Bearer not-a-real-token"},
+        )
+    assert response.status_code in (401, 422)
 
 
 def test_singouins_auth_logout():

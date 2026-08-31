@@ -77,7 +77,7 @@ def check_if_token_revoked(jwt_header, jwt_payload):
     jti = jwt_payload["jti"]
     token_type = jwt_payload.get("type", "access")  # This will be 'access' or 'refresh'
     token_in_redis = r.get(f"{env_vars['API_ENV']}:auth:{token_type}_jti:{jti}")
-    return token_in_redis.decode() == 'revoked'
+    return token_in_redis is not None and token_in_redis.decode() == 'revoked'
 
 
 @app.before_request
