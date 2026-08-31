@@ -5,100 +5,11 @@ info:
   title: Singouins API
   contact: {}
 paths:
-  /auth/register:
-    post:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Register a new user
-      requestBody:
-        description: ''
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AuthRegisterPostBody'
-      responses:
-        '201':
-          description: OK - User registered | Registration mail sent
-        '206':
-          description: OK - User registered | Registration mail not sent
-        '400':
-          description: KO - Missing information in request
-        '401':
-          description: KO - Bad information in request
-  /auth/confirm/{token}:
-    post:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Conirm a new user
-      parameters:
-        - in: path
-          name: token
-          schema:
-            type: string
-          required: true
-      requestBody:
-        description: ''
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AuthRegisterPostBody'
-      responses:
-        '201':
-          description: OK - User confirmed
-        '498':
-          description: KO - Token expired
-  /auth/login:
-    post:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Returns access_token & refresh_token
-      requestBody:
-        description: ''
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AuthLoginPostBody'
-      responses:
-        '200':
-          description: OK - User logged in
-        '400':
-          description: KO - Missing information in request
-        '401':
-          description: KO - Bad information in request
-  /auth/refresh:
-    post:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Returns new access_token from refresh_token
-      security:
-        - refresh_token: []
-      responses:
-        '200':
-          description: OK
-  /auth/infos:
-    get:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Get informations from an authenticated user
-      security:
-        - access_token: []
-      responses:
-        '200':
-          description: OK
-  /auth/delete:
-    delete:
-      tags:
-        - '/auth: Authentificaton Requests'
-      summary: Permanently delete the logged-in user's own account
-      security:
-        - access_token: []
-      responses:
-        '200':
-          description: OK - User deleted
-
+  # /auth/* used to be documented here, but this static spec kept drifting
+  # from the real routes undetected (wrong methods, stale field names,
+  # missing endpoints - see api/docs/ARCHITECTURE.md's "Known gaps"). It's
+  # now auto-generated from the pydantic models in routes/auth/ instead -
+  # see /openapi for the live spec, or api/docs/ARCHITECTURE.md for why.
   /mypc:
     post:
       tags:
@@ -961,28 +872,6 @@ paths:
 
 components:
   schemas:
-    AuthRegisterPostBody:
-      type: object
-      properties:
-        username:
-          type: string
-          format: string
-        password:
-          type: string
-          format: password
-        mail:
-          type: string
-          format: string
-    AuthLoginPostBody:
-      type: object
-      properties:
-        username:
-          type: string
-          format: string
-        password:
-          type: string
-          format: password
-
     PcCreateBody:
       type: object
       properties:

@@ -5,9 +5,16 @@ from flask_jwt_extended import jwt_required, get_jwt_identity, create_access_tok
 from loguru import logger
 
 from utils.auth import register_access_token
+from routes.auth import auth_bp
+from routes.auth.schemas import AccessTokenResponse
 
 
-# API: POST /auth/refresh
+@auth_bp.post(
+    '/refresh',
+    summary="Exchange a refresh token for a new access token",
+    security=[{"refresh_token": []}],
+    responses={200: AccessTokenResponse},
+    )
 @jwt_required(refresh=True)
 def refresh():
     identity = get_jwt_identity()

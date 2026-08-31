@@ -5,9 +5,16 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from loguru import logger
 
 from mongo.models.User import UserDocument
+from routes.auth import auth_bp
+from routes.auth.schemas import MessageResponse
 
 
-# API: DELETE /auth/delete
+@auth_bp.delete(
+    '/delete',
+    summary="Permanently delete the logged-in user's own account",
+    security=[{"access_token": []}],
+    responses={200: MessageResponse},
+    )
 @jwt_required()
 def delete():
     # The target is always the caller's own account - never take it from

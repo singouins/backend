@@ -1,18 +1,22 @@
 # -*- coding: utf8 -*-
 
 from flask import jsonify
-from flask_jwt_extended import (get_jwt, jwt_required, JWTManager)
+from flask_jwt_extended import get_jwt, jwt_required
 from loguru import logger
 
 from utils.redis import r
+from routes.auth import auth_bp
+from routes.auth.schemas import MessageResponse
 
 from variables import env_vars
 
-# Initialize JWTManager for Flask
-jwt = JWTManager()
 
-
-# API: DELETE /auth/logout
+@auth_bp.delete(
+    '/logout',
+    summary="Revoke the caller's current access token",
+    security=[{"access_token": []}],
+    responses={200: MessageResponse},
+    )
 @jwt_required()
 def logout():
     jti = get_jwt()["jti"]

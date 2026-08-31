@@ -2,14 +2,25 @@
 
 from flask import jsonify
 from loguru import logger
+from pydantic import BaseModel
 
 from utils.token import confirm_token
 from mongo.models.User import UserDocument
+from routes.auth import auth_bp
+from routes.auth.schemas import MessageResponse
 
 
-# API: GET /auth/confirm/{token}
-def confirm(token):
-    username = confirm_token(token)
+class ConfirmTokenPath(BaseModel):
+    token: str
+
+
+@auth_bp.get(
+    '/confirm/<string:token>',
+    summary="Confirm a newly registered user's email",
+    responses={200: MessageResponse},
+    )
+def confirm(path: ConfirmTokenPath):
+    username = confirm_token(path.token)
     if username:
         try:
             User = UserDocument.objects(name=username).first()
