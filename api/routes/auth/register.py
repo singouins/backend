@@ -11,7 +11,7 @@ from utils.mail import send
 from utils.token import generate_confirmation_token
 from mongo.models.User import UserDocument, UserDiscord
 from routes.auth import auth_bp
-from routes.auth.schemas import UserResponse, ValidationErrorResponse
+from routes.auth.schemas import MessageResponse, UserResponse, ValidationErrorResponse
 from variables import (
     API_URL,
     DATA_PATH,
@@ -39,6 +39,7 @@ def _public_user(user):
         201: UserResponse,
         400: ValidationErrorResponse,
         409: UserResponse,
+        500: MessageResponse,
         },
     )
 def register(body: RegisterUserSchema):
@@ -70,6 +71,10 @@ def register(body: RegisterUserSchema):
     except Exception as e:
         msg = f'User Creation KO (mail:{body.mail}) [{e}]'
         logger.error(msg)
+        # Never fall through to the "success" path below on a failed save -
+        # newUser was never persisted, so there's nothing to email a
+        # confirmation link for or report back as created.
+        return jsonify({"msg": msg}), 500
 
     # User created, we send email
     subject = '[🐒&🐖] Bienvenue chez le Singouins !'
