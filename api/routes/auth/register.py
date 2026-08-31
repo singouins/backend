@@ -11,7 +11,7 @@ from utils.mail import send
 from utils.token import generate_confirmation_token
 from mongo.models.User import UserDocument, UserDiscord
 from routes.auth import auth_bp
-from routes.auth.schemas import MessageResponse, ValidationErrorResponse
+from routes.auth.schemas import UserResponse, ValidationErrorResponse
 from variables import (
     API_URL,
     DATA_PATH,
@@ -24,14 +24,21 @@ class RegisterUserSchema(BaseModel):
     password: str
 
 
+def _public_user(user):
+    """ user.to_mongo().to_dict(), minus the password hash. """
+    doc = user.to_mongo().to_dict()
+    doc.pop('hash', None)
+    return doc
+
+
 @auth_bp.post(
     '/register',
     summary="Register a new user and send a confirmation email",
     responses={
-        200: MessageResponse,
-        201: MessageResponse,
+        200: UserResponse,
+        201: UserResponse,
         400: ValidationErrorResponse,
-        409: MessageResponse,
+        409: UserResponse,
         },
     )
 def register(body: RegisterUserSchema):
@@ -48,7 +55,7 @@ def register(body: RegisterUserSchema):
         return jsonify(
             {
                 "msg": msg,
-                "user": User.to_mongo().to_dict(),
+                "user": _public_user(User),
             }
         ), 409
 
@@ -84,7 +91,7 @@ def register(body: RegisterUserSchema):
         return jsonify(
             {
                 "msg": msg,
-                "user": newUser.to_mongo().to_dict(),
+                "user": _public_user(newUser),
             }
         ), 201
     else:
@@ -93,6 +100,6 @@ def register(body: RegisterUserSchema):
         return jsonify(
             {
                 "msg": msg,
-                "user": newUser.to_mongo().to_dict(),
+                "user": _public_user(newUser),
             }
         ), 200

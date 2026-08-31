@@ -13,6 +13,17 @@ def test_singouins_auth_register():
     response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': USER_NAME})  # noqa: E501
     assert response.status_code == 201 or \
         'User successfully added' in response.json().get("msg")
+    # Regression test: the response used to include the full Mongo user
+    # document, including the bcrypt password hash.
+    assert 'hash' not in response.json().get("user", {})
+
+
+def test_singouins_auth_register_duplicate_does_not_leak_hash():
+    # Registering the same user again hits the 409 "already exists" branch,
+    # which had the exact same hash-leak bug on its own separate response.
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': USER_NAME})  # noqa: E501
+    assert response.status_code == 409
+    assert 'hash' not in response.json().get("user", {})
 
 
 def test_singouins_auth_login():

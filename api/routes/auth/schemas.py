@@ -7,6 +7,11 @@ class MessageResponse(BaseModel):
     msg: str
 
 
+class UserResponse(BaseModel):
+    msg: str
+    user: dict
+
+
 class LoggedInAsResponse(BaseModel):
     logged_in_as: str
 
