@@ -88,26 +88,16 @@ paths:
       responses:
         '200':
           description: OK
-  /auth/delete/{username}:
+  /auth/delete:
     delete:
       tags:
         - '/auth: Authentificaton Requests'
-      summary: Permanently delete a PC from DB
-      parameters:
-        - in: path
-          name: username
-          schema:
-            type: string
-          required: true
+      summary: Permanently delete the logged-in user's own account
       security:
         - access_token: []
       responses:
         '200':
           description: OK - User deleted
-        '400':
-          description: KO - Missing information in request
-        '404':
-          description: KO - User not found
 
   /mypc:
     post:
