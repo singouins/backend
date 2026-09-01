@@ -21,24 +21,25 @@ class ConfirmTokenPath(BaseModel):
     )
 def confirm(path: ConfirmTokenPath):
     username = confirm_token(path.token)
-    if username:
-        try:
-            User = UserDocument.objects(name=username).first()
-            User.active = True
-            User.save()
-        except Exception as e:
-            msg = f'User confirmation KO (username:{username}) [{e}]'
-            logger.error(msg)
-        else:
-            msg = f'User confirmation OK (username:{username})'
-            logger.trace(msg)
-    else:
+    if not username:
         msg = "Confirmation link invalid or has expired"
         logger.warning(msg)
+        return jsonify({"msg": msg}), 200
 
-    # Finally
-    return jsonify(
-        {
-            "msg": msg,
-        }
-    ), 200
+    User = UserDocument.objects(name=username).first()
+    if User is None:
+        msg = f'User confirmation KO (username:{username}) [user not found]'
+        logger.error(msg)
+        return jsonify({"msg": msg}), 200
+
+    try:
+        User.active = True
+        User.save()
+    except Exception as e:
+        msg = f'User confirmation KO (username:{username}) [{e}]'
+        logger.error(msg)
+        return jsonify({"msg": msg}), 200
+
+    msg = f'User confirmation OK (username:{username})'
+    logger.trace(msg)
+    return jsonify({"msg": msg}), 200
