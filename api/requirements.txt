@@ -17,7 +17,11 @@ charset-normalizer==3.4.0
 click==8.1.7
     # via flask
 dnspython==2.7.0
-    # via pymongo
+    # via
+    #   email-validator
+    #   pymongo
+email-validator==2.3.0
+    # via pydantic
 flask==3.1.3
     # via
     #   -r requirements.in
@@ -46,7 +50,9 @@ flask-uuid==0.2
 gunicorn==26.1.0
     # via -r requirements.in
 idna==3.15
-    # via requests
+    # via
+    #   email-validator
+    #   requests
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6

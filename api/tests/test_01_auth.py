@@ -18,6 +18,14 @@ def test_singouins_auth_register():
     assert 'hash' not in response.json().get("user", {})
 
 
+def test_singouins_auth_register_rejects_invalid_email():
+    # Regression test: `mail` used to be a bare `str`, accepting any junk
+    # as a "username". It's now pydantic's EmailStr.
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': 'not-an-email'})  # noqa: E501
+    assert response.status_code == 400
+    assert response.json().get("success") is False
+
+
 def test_singouins_auth_register_duplicate_does_not_leak_hash():
     # Registering the same user again hits the 409 "already exists" branch,
     # which had the exact same hash-leak bug on its own separate response.

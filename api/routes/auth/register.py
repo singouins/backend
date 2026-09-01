@@ -5,7 +5,7 @@ import uuid
 from flask import jsonify
 from flask_bcrypt import generate_password_hash
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from utils.mail import send
 from utils.token import generate_confirmation_token
@@ -20,7 +20,7 @@ from variables import (
 
 
 class RegisterUserSchema(BaseModel):
-    mail: str
+    mail: EmailStr
     password: str
 
 
