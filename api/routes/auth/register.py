@@ -62,7 +62,12 @@ def register(body: RegisterUserSchema):
         newUser = UserDocument(
             _id=uuid.uuid3(uuid.NAMESPACE_DNS, body.mail),
             discord=UserDiscord(),
-            hash=generate_password_hash(body.password, rounds=10),
+            # flask_bcrypt.generate_password_hash returns bytes - decode
+            # explicitly rather than rely on mongoengine's constructor
+            # silently coercing it (a plain attribute assignment on an
+            # already-fetched document does NOT do this - see
+            # reset_password.py, which hit exactly that).
+            hash=generate_password_hash(body.password, rounds=10).decode(),
             name=body.mail,
         )
         newUser.save()

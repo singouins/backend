@@ -16,9 +16,11 @@ auth_bp = APIBlueprint(
 # first, then import the modules that decorate routes onto it).
 from . import confirm  # noqa: E402,F401
 from . import delete  # noqa: E402,F401
+from . import forgot_password  # noqa: E402,F401
 from . import infos  # noqa: E402,F401
 from . import login  # noqa: E402,F401
 from . import logout  # noqa: E402,F401
 from . import refresh  # noqa: E402,F401
 from . import register  # noqa: E402,F401
 from . import resend  # noqa: E402,F401
+from . import reset_password  # noqa: E402,F401

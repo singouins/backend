@@ -262,3 +262,101 @@ def test_singouins_auth_resend_already_confirmed():
     response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
     access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
     requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_forgot_password_unknown_email_looks_identical_to_known():
+    # Same enumeration-safety principle as login/resend.
+    mail = 'forgot-target@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    known_response = requests.post(f'{API_URL}/auth/forgot-password', json={'mail': mail})  # noqa: E501
+    unknown_response = requests.post(f'{API_URL}/auth/forgot-password', json={'mail': 'does-not-exist@exemple.net'})  # noqa: E501
+
+    assert known_response.status_code == 200
+    assert unknown_response.status_code == 200
+    assert known_response.json() == unknown_response.json()
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_reset_password_works():
+    mail = 'reset-works@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'old-password', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    response = requests.post(f'{API_URL}/auth/forgot-password', json={'mail': mail})
+    assert response.status_code == 200
+
+    token = r.get(f"{API_ENV}:auth:current_reset_token:{mail}")
+    assert token is not None
+
+    response = requests.post(f'{API_URL}/auth/reset-password', json={'token': token.decode(), 'password': 'new-password'})  # noqa: E501
+    assert response.status_code == 200
+    assert 'Reset password OK' in response.json().get("msg")
+
+    # Old password no longer works, new one does.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'old-password'})  # noqa: E501
+    assert response.status_code == 401
+
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'new-password'})  # noqa: E501
+    assert response.status_code == 200
+
+    # Cleanup.
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_reset_password_invalid_token():
+    response = requests.post(f'{API_URL}/auth/reset-password', json={'token': 'not-a-real-token', 'password': 'whatever'})  # noqa: E501
+    assert response.status_code == 400
+    assert 'invalid or has expired' in response.json().get("msg")
+
+
+def test_singouins_auth_reset_password_is_single_use():
+    # Regression-shaped test: a reset token must not be replayable, unlike
+    # a confirmation token - reusing it after a successful reset must fail.
+    mail = 'reset-single-use@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'old-password', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    requests.post(f'{API_URL}/auth/forgot-password', json={'mail': mail})
+    token = r.get(f"{API_ENV}:auth:current_reset_token:{mail}").decode()
+
+    response = requests.post(f'{API_URL}/auth/reset-password', json={'token': token, 'password': 'new-password'})  # noqa: E501
+    assert response.status_code == 200
+
+    response = requests.post(f'{API_URL}/auth/reset-password', json={'token': token, 'password': 'another-password'})  # noqa: E501
+    assert response.status_code == 400
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'new-password'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_reset_password_revokes_refresh_token():
+    mail = 'reset-revokes@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'old-password', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'old-password'})  # noqa: E501
+    refresh_header = {"Authorization": f"Bearer {response.json().get('refresh_token')}"}
+
+    requests.post(f'{API_URL}/auth/forgot-password', json={'mail': mail})
+    token = r.get(f"{API_ENV}:auth:current_reset_token:{mail}").decode()
+    response = requests.post(f'{API_URL}/auth/reset-password', json={'token': token, 'password': 'new-password'})  # noqa: E501
+    assert response.status_code == 200
+
+    # The refresh token issued before the reset must no longer work.
+    response = requests.post(f'{API_URL}/auth/refresh', headers=refresh_header)
+    assert response.status_code == 401
+    assert 'revoked' in response.json().get("msg")
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'new-password'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
