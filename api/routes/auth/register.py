@@ -49,6 +49,10 @@ def register(body: RegisterUserSchema):
     except UserDocument.DoesNotExist:
         # We can create the User
         pass
+    except Exception as e:
+        msg = f'User existence check KO (mail:{body.mail}) [{e}]'
+        logger.error(msg)
+        return jsonify({"msg": msg}), 500
     else:
         # We return an error (duplicate user)
         msg = f"User already exists (mail:{body.mail})"
