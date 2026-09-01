@@ -113,4 +113,21 @@ def test_singouins_auth_logout():
     assert response.status_code == 401
     assert 'revoked' in response.json().get("msg")
 
+
+def test_singouins_auth_logout_also_revokes_refresh_token():
+    # Regression test: logout used to only blocklist the access token,
+    # leaving the refresh token (30-day life) usable to mint new access
+    # tokens indefinitely after "logging out".
+    response = requests.post(f'{API_URL}/auth/login', json=AUTH_PAYLOAD)
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    refresh_header = {"Authorization": f"Bearer {response.json().get('refresh_token')}"}
+
+    response = requests.delete(f'{API_URL}/auth/logout', headers=access_header)
+    assert response.status_code == 200
+    assert 'JTI Revokation OK' in response.json().get("msg")
+
+    response = requests.post(f'{API_URL}/auth/refresh', headers=refresh_header)
+    assert response.status_code == 401
+    assert 'revoked' in response.json().get("msg")
+
 # url       = f'{API_URL}/auth/confirm/{token}'  # POST  # NOTDONE
