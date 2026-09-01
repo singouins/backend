@@ -1,10 +1,14 @@
 # -*- coding: utf8 -*-
 
+import secrets
+
 import requests
 
 from variables import (
+    API_ENV,
     AUTH_PAYLOAD,
     API_URL,
+    r,
     USER_NAME,
     )
 
@@ -157,4 +161,104 @@ def test_singouins_auth_logout_also_revokes_refresh_token():
     assert response.status_code == 401
     assert 'revoked' in response.json().get("msg")
 
-# url       = f'{API_URL}/auth/confirm/{token}'  # POST  # NOTDONE
+
+def test_singouins_auth_confirm_happy_path():
+    mail = 'confirm-happy@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    # The confirmation token is only ever emailed, never returned by the
+    # API - fetch it the same way support tooling would, straight from the
+    # Redis lookup key generate_confirmation_token() also writes.
+    token = r.get(f"{API_ENV}:auth:current_confirm_token:{mail}")
+    assert token is not None
+
+    response = requests.get(f'{API_URL}/auth/confirm/{token.decode()}')
+    assert response.status_code == 200
+    assert 'User confirmation OK' in response.json().get("msg")
+
+    # Cleanup: log in as the throwaway user and delete it via /auth/delete.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_confirm_unknown_user():
+    # Regression test: a token resolving to an email with no matching User
+    # document used to raise AttributeError (None.active = True), silently
+    # survived only because it happened to land inside a broad except.
+    # Write a token directly to Redis, the same way generate_confirmation_
+    # token() does, for an email that was never registered.
+    token = secrets.token_urlsafe(16)
+    r.set(f"{API_ENV}:auth:confirm_token:{token}", "ghost@exemple.net", ex=60)
+
+    response = requests.get(f'{API_URL}/auth/confirm/{token}')
+    assert response.status_code == 200
+    assert 'user not found' in response.json().get("msg")
+
+
+def test_singouins_auth_confirm_invalid_token():
+    response = requests.get(f'{API_URL}/auth/confirm/not-a-real-token')
+    assert response.status_code == 200
+    assert 'invalid or has expired' in response.json().get("msg")
+
+
+def test_singouins_auth_resend_unknown_email_looks_identical_to_known():
+    # Same enumeration-safety principle as login: an unknown email must
+    # get back the exact same response as a real, unconfirmed one.
+    mail = 'resend-target@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    known_response = requests.post(f'{API_URL}/auth/resend', json={'mail': mail})
+    unknown_response = requests.post(f'{API_URL}/auth/resend', json={'mail': 'does-not-exist@exemple.net'})  # noqa: E501
+
+    assert known_response.status_code == 200
+    assert unknown_response.status_code == 200
+    assert known_response.json() == unknown_response.json()
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_resend_issues_a_working_token():
+    mail = 'resend-works@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    # Let the original registration token get overwritten by a resend.
+    response = requests.post(f'{API_URL}/auth/resend', json={'mail': mail})
+    assert response.status_code == 200
+
+    token = r.get(f"{API_ENV}:auth:current_confirm_token:{mail}")
+    assert token is not None
+
+    response = requests.get(f'{API_URL}/auth/confirm/{token.decode()}')
+    assert response.status_code == 200
+    assert 'User confirmation OK' in response.json().get("msg")
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)
+
+
+def test_singouins_auth_resend_already_confirmed():
+    mail = 'resend-already-active@exemple.net'
+    response = requests.post(f'{API_URL}/auth/register', json={'password': 'plop', 'mail': mail})  # noqa: E501
+    assert response.status_code in (200, 201)
+
+    token = r.get(f"{API_ENV}:auth:current_confirm_token:{mail}").decode()
+    requests.get(f'{API_URL}/auth/confirm/{token}')
+
+    # Resending for an already-confirmed account must not error, and must
+    # look identical to every other case (no "already confirmed" signal).
+    response = requests.post(f'{API_URL}/auth/resend', json={'mail': mail})
+    assert response.status_code == 200
+
+    # Cleanup.
+    response = requests.post(f'{API_URL}/auth/login', json={'username': mail, 'password': 'plop'})  # noqa: E501
+    access_header = {"Authorization": f"Bearer {response.json().get('access_token')}"}
+    requests.delete(f'{API_URL}/auth/delete', headers=access_header)

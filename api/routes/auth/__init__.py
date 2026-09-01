@@ -21,3 +21,4 @@ from . import login  # noqa: E402,F401
 from . import logout  # noqa: E402,F401
 from . import refresh  # noqa: E402,F401
 from . import register  # noqa: E402,F401
+from . import resend  # noqa: E402,F401

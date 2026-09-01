@@ -7,16 +7,10 @@ from flask_bcrypt import generate_password_hash
 from loguru import logger
 from pydantic import BaseModel, EmailStr
 
-from utils.mail import send
-from utils.token import generate_confirmation_token
 from mongo.models.User import UserDocument, UserDiscord
 from routes.auth import auth_bp
+from routes.auth.confirmation import send_confirmation_email
 from routes.auth.schemas import MessageResponse, UserResponse, ValidationErrorResponse
-from variables import (
-    API_URL,
-    DATA_PATH,
-    DISCORD_URL,
-    )
 
 
 class RegisterUserSchema(BaseModel):
@@ -81,20 +75,7 @@ def register(body: RegisterUserSchema):
         return jsonify({"msg": msg}), 500
 
     # User created, we send email
-    subject = '[🐒&🐖] Bienvenue chez le Singouins !'
-    token = generate_confirmation_token(body.mail)
-    url = f'{API_URL}/auth/confirm/{token}'
-    email_body = open(f"{DATA_PATH}/registered.html", "r").read()
-
-    if send(
-        body.mail,
-        subject,
-        email_body.format(
-            urllogo='[INSERT LOGO HERE]',
-            urlconfirm=url,
-            urldiscord=DISCORD_URL
-            )
-    ):
+    if send_confirmation_email(body.mail):
         msg = "User successfully added | mail OK"
         logger.debug(msg)
         return jsonify(
