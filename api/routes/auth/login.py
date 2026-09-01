@@ -27,25 +27,25 @@ class LoginUserSchema(BaseModel):
         200: TokenPairResponse,
         400: ValidationErrorResponse,
         401: MessageResponse,
-        404: MessageResponse,
         },
     )
 def login(body: LoginUserSchema):
+    # Unknown username and wrong password return the exact same response -
+    # a different status/message per case would let a caller enumerate
+    # valid usernames by watching which one they get back.
+    def invalid_credentials():
+        return jsonify({"msg": "Invalid username or password"}), 401
+
     try:
         User = UserDocument.objects(name=body.username).get()
     except UserDocument.DoesNotExist:
         logger.debug("UserDocument Query KO (404)")
-        return jsonify({"msg": "User not found"}), 404
+        return invalid_credentials()
 
     # If password mismatch
     if not check_password_hash(User.hash, body.password):
-        msg = "Wrong password"
-        logger.warning(msg)
-        return jsonify(
-            {
-                "msg": msg,
-            }
-        ), 401
+        logger.warning("Wrong password")
+        return invalid_credentials()
 
     # Create tokens
     access_token = create_access_token(

@@ -33,6 +33,25 @@ def test_singouins_auth_login():
     assert response.json().get("refresh_token")
 
 
+def test_singouins_auth_login_does_not_leak_username_existence():
+    # Regression test: an unknown username used to return 404 "User not
+    # found" while a wrong password on a real account returned 401 "Wrong
+    # password" - letting a caller enumerate valid usernames by watching
+    # which response they got. Both must now be identical.
+    unknown_user_response = requests.post(
+        f'{API_URL}/auth/login',
+        json={'username': 'does-not-exist@exemple.net', 'password': 'plop'},
+        )
+    wrong_password_response = requests.post(
+        f'{API_URL}/auth/login',
+        json={'username': USER_NAME, 'password': 'not-the-right-password'},
+        )
+
+    assert unknown_user_response.status_code == 401
+    assert wrong_password_response.status_code == 401
+    assert unknown_user_response.json() == wrong_password_response.json()
+
+
 def test_singouins_auth_infos(jwt_header):
     response  = requests.get(f'{API_URL}/auth/infos', headers=jwt_header['access'])
     assert response.status_code == 200
