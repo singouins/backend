@@ -4,10 +4,12 @@ from flask_openapi3 import APIBlueprint, Tag
 
 auth_tag = Tag(name="auth", description="Authentication")
 
+# No url_prefix: this blueprint IS the whole auth service (it used to be
+# mounted at /auth under the game api's own domain; now it's the root of
+# its own service/domain, so routes are /login, /register, etc. directly).
 auth_bp = APIBlueprint(
     "auth",
     __name__,
-    url_prefix="/auth",
     abp_tags=[auth_tag],
     )
 

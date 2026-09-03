@@ -4,78 +4,85 @@
 #
 #    pip-compile --no-index --output-file=requirements.txt --strip-extras requirements.in
 #
-annotated-types==0.7.0
+annotated-types==0.8.0
     # via pydantic
+bcrypt==5.0.0
+    # via flask-bcrypt
 blinker==1.9.0
     # via flask
-certifi==2024.8.30
-    # via requests
-charset-normalizer==3.4.0
-    # via requests
-click==8.1.7
+click==8.5.0
     # via flask
-dnspython==2.7.0
-    # via pymongo
+dnspython==2.8.0
+    # via
+    #   email-validator
+    #   pymongo
+email-validator==2.3.0
+    # via pydantic
 flask==3.1.3
     # via
     #   -r requirements.in
+    #   flask-bcrypt
     #   flask-cors
     #   flask-jwt-extended
-    #   flask-swagger-ui
+    #   flask-openapi3
     #   prometheus-flask-exporter
+flask-bcrypt==1.0.1
+    # via -r requirements.in
 flask-cors==6.0.5
     # via -r requirements.in
 flask-jwt-extended==4.7.4
     # via -r requirements.in
-flask-swagger-ui==5.32.13
-    # via -r requirements.in
-flask-uuid==0.2
-    # via -r requirements.in
+flask-openapi3==4.3.2
+    # via
+    #   -r requirements.in
+    #   flask-openapi3-swagger
+flask-openapi3-swagger==5.31.0
+    # via flask-openapi3
 gunicorn==26.1.0
     # via -r requirements.in
-idna==3.15
-    # via requests
+idna==3.19
+    # via email-validator
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6
     # via flask
 loguru==0.7.3
     # via -r requirements.in
-markupsafe==3.0.1
+markupsafe==3.0.3
     # via
     #   flask
     #   jinja2
     #   werkzeug
 mongoengine==0.29.3
     # via -r requirements.in
-prometheus-client==0.21.0
+prometheus-client==0.26.0
     # via prometheus-flask-exporter
 prometheus-flask-exporter==0.23.2
     # via -r requirements.in
 pydantic==2.13.4
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   flask-openapi3
 pydantic-core==2.46.4
     # via pydantic
 pyjwt==2.13.0
     # via flask-jwt-extended
-pymongo==4.10.1
+pymongo==4.17.0
     # via mongoengine
 redis==6.2.0
-    # via yarqueue
-requests==2.34.2
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   yarqueue
 strenum==0.4.15
     # via yarqueue
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   pydantic
     #   pydantic-core
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via pydantic
-urllib3==2.7.0
-    # via requests
-werkzeug==3.1.6
+werkzeug==3.1.8
     # via
     #   flask
     #   flask-cors

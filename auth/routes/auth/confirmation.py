@@ -15,7 +15,7 @@ def send_confirmation_email(mail):
     from account/token creation. Shared by register.py and resend.py. """
     subject = '[🐒&🐖] Bienvenue chez le Singouins !'
     token = generate_confirmation_token(mail)
-    url = f'{API_URL}/auth/confirm/{token}'
+    url = f'{API_URL}/confirm/{token}'
     with open(f"{DATA_PATH}/registered.html", "r") as f:
         email_body = f.read()
 

@@ -4,10 +4,9 @@
 import sys
 import time
 
-from flask import jsonify, g
+from flask import Flask, jsonify, g
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-from flask_openapi3 import Info, OpenAPI
 from flask_uuid import FlaskUUID
 from flask_swagger_ui import get_swaggerui_blueprint
 from prometheus_flask_exporter import PrometheusMetrics
@@ -30,10 +29,8 @@ from utils.gunilog import (
     StandaloneApplication,
     StubbedGunicornLogger,
     )
-from utils.openapi import make_validation_error_response
 from utils.redis import r
 
-from routes.auth import auth_bp
 import routes.log
 import routes.map
 import routes.meta
@@ -53,35 +50,18 @@ import routes.mypc.squad
 import routes.mypc.view
 import routes.pc
 
-# /auth is piloting flask-openapi3 (auto-generated OpenAPI doc, served at
-# /openapi, from the pydantic models already living next to each route) -
-# the rest of the app is still on the legacy static/swagger.yaml + plain
-# add_url_rule below. See api/docs/ARCHITECTURE.md.
-info = Info(title="Singouins API", version="0.0.1")
-security_schemes = {
-    "access_token": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
-    "refresh_token": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"},
-    }
-app = OpenAPI(
-    __name__,
-    info=info,
-    security_schemes=security_schemes,
-    validation_error_callback=make_validation_error_response,
-    doc_prefix="/openapi",
-    )
+app = Flask(__name__)
 CORS(app)                         # We wrap around all the app the CORS
 FlaskUUID(app)                    # We wrap around all the app the UUID control
 metrics = PrometheusMetrics(app)  # We wrap around all the app the metrics
 
-# Setup the flask_swagger_ui extension (covers everything except /auth,
-# which now documents itself - see api/static/swagger.yaml)
+# Setup the flask_swagger_ui extension
 SWAGGERUI_BLUEPRINT = get_swaggerui_blueprint(
     '/swagger',
     '/static/swagger.yaml',
     config={'app_name': "Singouins API"}
 )
 app.register_blueprint(SWAGGERUI_BLUEPRINT, url_prefix='/swagger')
-app.register_api(auth_bp)
 
 # Setup the ProxyFix to have the Real-IP in the logs
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)

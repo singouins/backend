@@ -64,7 +64,7 @@ jobs:
 
     strategy:
       matrix:
-        python-app: [ "ai", "ws", "api" ]
+        python-app: [ "ai", "ws", "api", "auth" ]
 
     needs:
     - mongo-pytest
@@ -132,9 +132,23 @@ jobs:
         echo "--- Moving mongo lib where it belongs"
         cp -a mongo ${{ matrix.python-app }}/
         echo "--- Starting app in background"
-        # Used for ai, api, ws
+        # Used for ai, api, ws, auth
         if [ -f ${{ matrix.python-app }}/main.py ]
           then python3 ${{ matrix.python-app }}/main.py &
+        fi
+        # /auth/* moved out of api into its own service - api's own suite
+        # still needs a live login (see api/tests/conftest.py's jwt_header
+        # fixture, which registers/logs in against AUTH_API_URL), so start
+        # auth here too, in its own venv (its requirements.txt is compiled
+        # independently from api's and can drift on shared transitive
+        # deps - same as they would in their own separate containers).
+        if [ "${{ matrix.python-app }}" = "api" ]; then
+          echo "--- Also starting auth (api's tests need a live login) ---"
+          cp -a mongo auth/
+          python3 -m venv /tmp/venv-auth
+          /tmp/venv-auth/bin/pip install -q -r auth/requirements.txt
+          GUNICORN_PORT=5001 /tmp/venv-auth/bin/python3 auth/main.py &
+          export AUTH_API_URL=http://127.0.0.1:5001
         fi
         echo "--- Sleep(${{ vars.STARTUP_SLEEP }}) (`date`)"
         sleep ${{ vars.STARTUP_SLEEP }}
@@ -146,7 +160,7 @@ jobs:
 
     strategy:
       matrix:
-        python-app: [ "ai", "ws", "api", "discord" ]
+        python-app: [ "ai", "ws", "api", "discord", "auth" ]
 
     needs:
     - app-pytest

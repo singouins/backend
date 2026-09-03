@@ -3,14 +3,20 @@
 import pytest
 import requests
 
-from variables import AUTH_PAYLOAD, API_URL, CREATURE_ID
+from variables import AUTH_API_URL, AUTH_PAYLOAD, API_URL, CREATURE_ID
 
 
 @pytest.fixture(scope="session")
 def jwt_header():
     header = {}
+    # auth/* is a separate service now. api's own suite doesn't depend on
+    # auth's suite having run first (or at all) to create the shared test
+    # account - register it here too, tolerating "already exists" (409),
+    # so this fixture is self-sufficient regardless of run order.
+    requests.post(f'{AUTH_API_URL}/register', json={'mail': AUTH_PAYLOAD['username'], 'password': AUTH_PAYLOAD['password']})  # noqa: E501
+
     # Perform the login call and get the token
-    response = requests.post(f'{API_URL}/auth/login', json=AUTH_PAYLOAD)
+    response = requests.post(f'{AUTH_API_URL}/login', json=AUTH_PAYLOAD)
     assert response.status_code == 200
 
     access_token = response.json().get("access_token")

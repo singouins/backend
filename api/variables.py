@@ -12,29 +12,22 @@ env_vars = {
     "REDIS_HOST": os.environ.get("REDIS_HOST", '127.0.0.1'),
     "REDIS_PORT": int(os.environ.get("REDIS_PORT", 6379)),
     "REDIS_BASE": int(os.environ.get("REDIS_BASE", 0)),
-    "SMTP_FROM": os.environ['SEP_SMTP_FROM'],
-    "SMTP_SERVER": os.environ['SEP_SMTP_SERVER'],
-    "SMTP_USER": os.environ['SEP_SMTP_USER'],
-    "SMTP_PASS": os.environ['SEP_SMTP_PASS'],
-    "SMTP_HOSTNAME": os.environ['SEP_SMTP_HOSTNAME'],
 }
 # Print the environment variables for debugging
 for var, value in env_vars.items():
     logger.debug(f"{var}: {value}")
 
 # API variables
+# SEP_SECRET_KEY is needed here too (not just in auth/) - this service
+# still verifies/revokes JWTs minted by the auth service, via the same
+# secret and the same Redis blocklist keys. See main.py's JWTManager.
 SEP_SECRET_KEY = os.environ['SEP_SECRET_KEY']
-TOKEN_DURATION = int(os.environ.get("SEP_TOKEN_DURATION", 60))
-API_URL = os.environ.get("API_URL", 'http://127.0.0.1:5000')
 
 # YarQueue variables
 YQ_BROADCAST = os.environ.get("YQ_BROADCAST", f"{env_vars['API_ENV']}:yarqueue:broadcast")
 YQ_DISCORD   = os.environ.get("YQ_DISCORD", f"{env_vars['API_ENV']}:yarqueue:discord")
 # PubSub variables
 PS_BROADCAST = os.environ.get("PS_BROADCAST", 'ws-broadcast')
-
-# Discord permanent invite link
-DISCORD_URL = os.environ.get("SEP_DISCORD_URL", 'http://127.0.0.1')
 
 # Resolver variables
 RESOLVER_HOST = os.environ.get("RESOLVER_HOST", 'resolver-svc')
@@ -49,13 +42,6 @@ GUNICORN_BIND    = f'{GUNICORN_HOST}:{GUNICORN_PORT}'
 GUNICORN_WORKERS = os.environ.get("GUNICORN_WORKERS", 1)
 GUNICORN_THREADS = os.environ.get("GUNICORN_THREADS", 2)
 GUNICORN_RELOAD  = os.environ.get("GUNICORN_RELOAD", True)
-
-# GitHub check to position relative paths correctly
-if os.environ.get("CI"):
-    # Here we are inside GitHub CI process
-    DATA_PATH = 'api/data'
-else:
-    DATA_PATH = 'data'
 
 # Static data
 rarity_levels = {
