@@ -25,10 +25,6 @@ COPY --chown=api:api --from=builder /code /code
 # Copy application code
 COPY --chown=api:api /api    /code
 COPY --chown=api:api /mongo  /code/mongo
-# api/utils/redis.py is a symlink to ../../_redis/redis.py; COPY doesn't
-# dereference symlinks, so its target has to exist at that same relative
-# path in the image too (../../_redis from /code/utils, i.e. /_redis).
-COPY --chown=api:api /_redis /_redis
 
 # Set working directory
 WORKDIR /code

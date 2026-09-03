@@ -25,10 +25,6 @@ COPY --chown=auth:auth --from=builder /code /code
 # Copy application code
 COPY --chown=auth:auth /auth   /code
 COPY --chown=auth:auth /mongo  /code/mongo
-# auth/utils/redis.py is a symlink to ../../_redis/redis.py; COPY doesn't
-# dereference symlinks, so its target has to exist at that same relative
-# path in the image too (../../_redis from /code/utils, i.e. /_redis).
-COPY --chown=auth:auth /_redis /_redis
 
 # Set working directory
 WORKDIR /code

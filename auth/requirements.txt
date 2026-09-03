@@ -70,11 +70,7 @@ pyjwt==2.13.0
 pymongo==4.17.0
     # via mongoengine
 redis==6.2.0
-    # via
-    #   -r requirements.in
-    #   yarqueue
-strenum==0.4.15
-    # via yarqueue
+    # via -r requirements.in
 typing-extensions==4.16.0
     # via
     #   pydantic
@@ -87,5 +83,3 @@ werkzeug==3.1.8
     #   flask
     #   flask-cors
     #   flask-jwt-extended
-yarqueue==0.4.1
-    # via -r requirements.in
