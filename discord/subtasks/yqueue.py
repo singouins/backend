@@ -38,7 +38,7 @@ async def send_message(bot: discord.Client, answer: str, embed: discord.Embed, s
 # Subtask
 #
 async def check(bot: discord.Client, timer: int):
-    while bot.is_ready:
+    while bot.is_ready():
         if bot.user:
             # Opening Queue
             msgs = yarqueue.Queue(name=env_vars['YQ_DISCORD'], redis=r)

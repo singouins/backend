@@ -116,7 +116,7 @@ async def ensure_role_deletion(guild: discord.Guild, role_name: str) -> None:
 
 
 async def create(bot: discord.Client, channel_type: str, timer: int):
-    while bot.is_ready:
+    while bot.is_ready():
         for guild in bot.guilds:
             admin_role = discord.utils.get(guild.roles, name='Team')
             bot_role = discord.utils.get(guild.roles, name='BOTS')
@@ -154,7 +154,7 @@ async def create(bot: discord.Client, channel_type: str, timer: int):
 
 
 async def cleanup(bot: discord.Client, channel_type: str, timer: int):
-    while bot.is_ready:
+    while bot.is_ready():
         for guild in bot.guilds:
             for channel in guild.text_channels:
                 m = re.search(rf"^{channel_type.lower()}-(?P<group_id>[\w\-]+)", channel.name)

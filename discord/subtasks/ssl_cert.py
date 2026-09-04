@@ -11,7 +11,7 @@ from variables import env_vars
 
 
 async def validator(bot: discord.Client, timer: int):
-    while bot.is_ready:
+    while bot.is_ready():
         if bot.user:
             try:
                 context = ssl.create_default_context()

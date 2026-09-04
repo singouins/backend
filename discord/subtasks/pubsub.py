@@ -25,7 +25,7 @@ async def check(bot: discord.Client) -> None:
     if not env_vars.get('PS_DISCORD'):
         return
 
-    while bot.is_ready:
+    while bot.is_ready():
         if bot.user:
             await pubsub.subscribe(env_vars['PS_DISCORD'])
 
