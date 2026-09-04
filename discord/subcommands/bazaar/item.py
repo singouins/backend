@@ -111,6 +111,7 @@ def item(group_bazaar, bot):
             Item.save()
             # Highscore
             Highscore.internal.item.sold += 1
+            Highscore.save()
         except Exception as e:
             description = f'Bazaar-Sell Query KO [{e}]'
             logger.error(f'{h} └──> {description}')
