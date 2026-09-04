@@ -34,13 +34,7 @@ async def test_wallet_shows_banana_balance_for_races_1_to_4(bot, make_ctx, get_c
     assert '42' in embed.footer.text
 
 
-async def test_wallet_race_5_to_8_currency_field_typo_errors_out(bot, make_ctx, get_callback, make_creature, make_satchel):  # noqa: E501
-    # Documents a real gap: for races 5-8 the code reads
-    # Satchel.currency.sausages, but SatchelCurrency's field is `sausage`
-    # (singular, see mongo/models/Satchel.py) - the AttributeError is
-    # caught by wallet.py's own broad except, so instead of the real
-    # wallet embed the command always shows a generic error for these
-    # races.
+async def test_wallet_shows_sausage_balance_for_races_5_to_8(bot, make_ctx, get_callback, make_creature, make_satchel):  # noqa: E501
     creature = make_creature(name='Bobby', race=5)
     make_satchel(_id=creature.id, currency={'sausage': 10})
 
@@ -53,7 +47,7 @@ async def test_wallet_race_5_to_8_currency_field_typo_errors_out(bot, make_ctx, 
 
     assert ctx.respond.call_count == 1
     embed = ctx.respond.call_args.kwargs['embed']
-    assert 'Query KO' in embed.description
+    assert '10' in embed.footer.text
 
 
 async def test_wallet_unknown_creature_responds_once(bot, make_ctx, get_callback):

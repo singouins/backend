@@ -83,7 +83,7 @@ def wallet(group_singouin, bot):
             if Creature.race in [1, 2, 3, 4]:
                 embed.set_footer(text=f"Account balance: {Satchel.currency.banana} 🍌")
             elif Creature.race in [5, 6, 7, 8]:
-                embed.set_footer(text=f"Account balance: {Satchel.currency.sausages} 🌭")
+                embed.set_footer(text=f"Account balance: {Satchel.currency.sausage} 🌭")
 
             # We check if we have a sprite to add as thumbnail
             if creature_sprite(Creature):
