@@ -8,7 +8,7 @@ RUN adduser -h /code -u 1000 -D -H api
 COPY --chown=api:api /api/requirements.txt /code/requirements.txt
 
 # Install dependencies
-RUN su api -c "pip3 install --user -U -r /code/requirements.txt"
+RUN su api -c "pip3 install --user --no-cache-dir -r /code/requirements.txt"
 
 # Stage 2: Final
 FROM python:3.14-alpine3.22

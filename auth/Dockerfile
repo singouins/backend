@@ -8,7 +8,7 @@ RUN adduser -h /code -u 1000 -D -H auth
 COPY --chown=auth:auth /auth/requirements.txt /code/requirements.txt
 
 # Install dependencies
-RUN su auth -c "pip3 install --user -U -r /code/requirements.txt"
+RUN su auth -c "pip3 install --user --no-cache-dir -r /code/requirements.txt"
 
 # Stage 2: Final
 FROM python:3.14-alpine3.22
