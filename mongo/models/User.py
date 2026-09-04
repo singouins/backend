@@ -46,7 +46,7 @@ class UserDocument(Document):
     - name      (StringField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     active = BooleanField(required=True, default=False)
     created = DateTimeField(default=datetime.datetime.utcnow)
     discord = EmbeddedDocumentField(UserDiscord, required=True)

@@ -40,7 +40,7 @@ class ItemDocument(Document):
     - _id       (UUIDField)
 
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     ammo = IntField(default=None)
     auctioned = BooleanField(required=True, default=False)
     bearer = UUIDField(required=True, binary=False)

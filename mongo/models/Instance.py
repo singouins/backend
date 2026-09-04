@@ -36,7 +36,7 @@ class InstanceDocument(Document):
     - tick      (IntField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=datetime.datetime.utcnow)
     creator = UUIDField(binary=False, required=True)
     fast = BooleanField(required=True, default=False)

@@ -74,7 +74,7 @@ class AuctionDocument(Document):
     - seller    (UUIDField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=datetime.datetime.utcnow)
     item = EmbeddedDocumentField(AuctionItem, required=True)
     price = IntField(required=True)

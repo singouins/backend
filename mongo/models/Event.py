@@ -40,7 +40,7 @@ class EventDocument(Document):
     - trigger   (UUIDField)
     - type      (IntField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     action = StringField(required=True)
     created = DateTimeField(default=datetime.datetime.utcnow)
     dst = UUIDField(binary=False, default=None)

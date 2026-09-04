@@ -34,7 +34,7 @@ class AggroDocument(Document):
     - bearer    (UUIDField)
     - instance  (UUIDField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     amount = IntField(default=0)
     bearer = UUIDField(binary=False, required=True, default=None)
     created = DateTimeField(default=datetime.datetime.utcnow)

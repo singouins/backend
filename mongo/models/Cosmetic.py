@@ -61,7 +61,7 @@ class CosmeticDocument(Document):
     - _id       (UUIDField)
 
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     bearer = UUIDField(required=True, binary=False)
     bound = BooleanField(required=True, default=True)
     bound_type = StringField(required=True, choices=ITEM_BIND, default='BoP')

@@ -31,7 +31,7 @@ class KorpDocument(Document):
     - name      (StringField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=datetime.datetime.utcnow)
     leader = UUIDField(required=True)
     name = StringField(binary=False, required=True)

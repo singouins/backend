@@ -48,7 +48,7 @@ class ResourceDocument(Document):
     - x         (IntField)
     - y         (IntField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=datetime.datetime.utcnow)
     instance = UUIDField(binary=False, required=True)
     material = StringField(required=True)

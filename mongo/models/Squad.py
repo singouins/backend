@@ -30,7 +30,7 @@ class SquadDocument(Document):
     - leader    (UUIDField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=datetime.datetime.utcnow)
     leader = UUIDField(binary=False, required=True)
     updated = DateTimeField(default=datetime.datetime.utcnow)

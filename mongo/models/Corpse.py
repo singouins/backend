@@ -50,7 +50,7 @@ class CorpseDocument(Document):
     - x         (IntField)
     - y         (IntField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     account = UUIDField(binary=False, default=None)
     created = DateTimeField(default=datetime.datetime.utcnow)
     gender = BooleanField(required=True)

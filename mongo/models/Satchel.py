@@ -115,7 +115,7 @@ class SatchelDocument(Document):
     - shard     (EmbeddedDocumentField)
     - updated   (DateTimeField)
     """
-    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4())
+    _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     ammo = EmbeddedDocumentField(SatchelAmmo, required=True)
     currency = EmbeddedDocumentField(SatchelCurrency, required=True)
     resource = EmbeddedDocumentField(SatchelResource, required=True)
