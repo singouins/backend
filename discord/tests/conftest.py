@@ -58,6 +58,7 @@ os.environ.setdefault("API_ENV", "test")
 
 import discord  # noqa: E402
 
+from mongo.models.Auction import AuctionDocument, AuctionItem, AuctionSeller  # noqa: E402
 from mongo.models.Creature import (  # noqa: E402
     CreatureDocument,
     CreatureHP,
@@ -96,14 +97,24 @@ MetaRace(_id=1, name='Test Monster', min_b=1, min_g=2, min_m=3, min_p=4, min_r=5
 
 @pytest.fixture(autouse=True)
 def _clean_db():
-    """Every test starts from an empty (non-Meta) database."""
+    """Every test starts from an empty (non-Meta) database.
+
+    Deletes documents rather than dropping collections - AuctionDocument
+    declares a TTL index (see mongo/models/Auction.py), and mongoengine
+    only calls ensure_indexes() once per class per process, the first time
+    its collection handle is fetched. drop_collection() wipes the index
+    along with the data but doesn't get mongoengine to recreate it, so a
+    later test relying on that index (auction_time_left()) would silently
+    lose it after the first drop.
+    """
     yield
-    CreatureDocument.drop_collection()
-    HighscoreDocument.drop_collection()
-    InstanceDocument.drop_collection()
-    ItemDocument.drop_collection()
-    SatchelDocument.drop_collection()
-    UserDocument.drop_collection()
+    AuctionDocument.objects.delete()
+    CreatureDocument.objects.delete()
+    HighscoreDocument.objects.delete()
+    InstanceDocument.objects.delete()
+    ItemDocument.objects.delete()
+    SatchelDocument.objects.delete()
+    UserDocument.objects.delete()
 
 
 @pytest.fixture
@@ -139,6 +150,29 @@ def make_ctx():
         ctx.respond = AsyncMock()
         return ctx
     return _make_ctx
+
+
+@pytest.fixture
+def make_interaction():
+    """Build a stand-in for discord.Interaction, for testing discord.ui.View
+    button callbacks directly (bypassing the real dispatch machinery, same
+    spirit as get_callback for slash commands).
+
+    Specced against the real classes - unlike make_ctx's plain MagicMock,
+    so that a call to a method that doesn't actually exist on
+    InteractionResponse (e.g. a typo like .respond() instead of
+    .send_message()) raises AttributeError here instead of silently
+    "succeeding" against an auto-generated mock attribute.
+    """
+    def _make_interaction(*, user=None):
+        interaction = MagicMock(spec=discord.Interaction)
+        interaction.user = user
+        interaction.response = MagicMock(spec=discord.InteractionResponse)
+        interaction.response.defer = AsyncMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+        return interaction
+    return _make_interaction
 
 
 @pytest.fixture
@@ -180,7 +214,15 @@ def make_user():
 @pytest.fixture
 def make_creature():
     def _make_creature(**overrides):
+        # _id is explicit, not left to CreatureDocument's own field
+        # default: that default is `uuid.uuid4()` (called once at class
+        # definition, not `uuid.uuid4` the factory), so every instance
+        # that doesn't set its own _id gets the *same* UUID for the life
+        # of the process - two make_creature() calls in one test would
+        # otherwise silently collide onto one document. Same reasoning
+        # applies to make_item/make_instance/make_auction below.
         data = dict(
+            _id=uuid.uuid4(),
             gender=True,
             hp=CreatureHP(),
             korp=CreatureKorp(),
@@ -238,6 +280,7 @@ def make_highscore():
 def make_item():
     def _make_item(**overrides):
         data = dict(
+            _id=uuid.uuid4(),
             bearer=uuid.uuid4(),
             metaid=1,
             metatype='armor',
@@ -251,9 +294,30 @@ def make_item():
 def make_instance():
     def _make_instance(**overrides):
         data = dict(
+            _id=uuid.uuid4(),
             creator=uuid.uuid4(),
             map=1,
             )
         data.update(overrides)
         return InstanceDocument(**data).save()
     return _make_instance
+
+
+@pytest.fixture
+def make_auction():
+    def _make_auction(**overrides):
+        data = dict(
+            _id=uuid.uuid4(),
+            item=AuctionItem(
+                id=uuid.uuid4(),
+                metaid=1,
+                metatype='armor',
+                name='Test Armor',
+                rarity='Common',
+                ),
+            price=10,
+            seller=AuctionSeller(id=uuid.uuid4(), name='Seller'),
+            )
+        data.update(overrides)
+        return AuctionDocument(**data).save()
+    return _make_auction
