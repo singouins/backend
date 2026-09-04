@@ -151,11 +151,11 @@ def grant(group_user, bot):
                         )
                     return
 
-            logger.info(f'{h} ├──> Query OK')
-            await ctx.respond(
-                embed=discord.Embed(
-                    description="Discord & Squad/Korp grant :ok:",
-                    colour=discord.Colour.green()
-                    )
+        logger.info(f'{h} ├──> Query OK')
+        await ctx.respond(
+            embed=discord.Embed(
+                description="Discord & Squad/Korp grant :ok:",
+                colour=discord.Colour.green()
                 )
-            logger.info(f'{h} └──> Answer sent')
+            )
+        logger.info(f'{h} └──> Answer sent')
