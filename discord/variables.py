@@ -25,6 +25,7 @@ env_vars = {
     "API_ENV": os.environ.get("API_ENV", None),
     "DISCORD_GUILD": os.environ.get("DISCORD_GUILD", None),
     "DISCORD_TOKEN": os.environ.get("DISCORD_TOKEN"),
+    "HEALTHCHECK_PORT": int(os.environ.get("HEALTHCHECK_PORT", 40404)),
     "PS_DISCORD": os.environ.get("PS_DISCORD", f'dc-broadcast-{os.environ.get("API_ENV", None).lower()}'),  # noqa: E501
     "REDIS_HOST": os.environ.get("REDIS_HOST", '127.0.0.1'),
     "REDIS_PORT": int(os.environ.get("REDIS_PORT", 6379)),

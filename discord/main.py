@@ -14,7 +14,7 @@ from subcommands import (
     singouin,
     user,
     )
-from subtasks import channels, ssl_cert, yqueue, pubsub
+from subtasks import channels, healthcheck, ssl_cert, yqueue, pubsub
 from variables import env_vars
 
 try:
@@ -187,6 +187,8 @@ bot.loop.create_task(channels.create(bot, 'Squad', 300))
 # 60s Tasks (@1Minute)
 if env_vars['YQ_CHECK']:
     bot.loop.create_task(yqueue.check(bot, 60))
+# Healthcheck server
+bot.loop.create_task(healthcheck.start(bot, env_vars['HEALTHCHECK_PORT']))
 
 
 # Run Discord bot

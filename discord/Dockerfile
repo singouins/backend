@@ -32,5 +32,9 @@ WORKDIR /code
 # Set user
 USER discord
 
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python3 -c "import socket,sys; s=socket.create_connection(('127.0.0.1',40404),3); sys.exit(0 if s.recv(16).startswith(b'OK') else 1)"
+
 # Entry point
 ENTRYPOINT ["/code/main.py"]
