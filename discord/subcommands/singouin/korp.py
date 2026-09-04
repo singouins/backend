@@ -70,7 +70,7 @@ def korp(group_singouin, bot):
                 ]
 
             KorpMembers = CreatureDocument.objects(korp__id=Creature.korp.id)
-            KorpMembers.order_by('korp.rank')
+            KorpMembers = KorpMembers.order_by('korp.rank')
 
             # Dirty Gruik to find the max(len(Member.name))
             w = max(len(KorpMember.name) for KorpMember in KorpMembers)

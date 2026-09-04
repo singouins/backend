@@ -33,6 +33,28 @@ async def test_korp_displays_members(bot, make_ctx, get_callback, make_creature,
     assert leader.name in embed.description
 
 
+async def test_korp_members_are_sorted_by_rank(bot, make_ctx, get_callback, make_creature, make_korp):  # noqa: E501
+    # Regression test: KorpMembers.order_by(...) used to be called without
+    # reassigning its result, so it had no effect (mongoengine querysets
+    # are immutable - order_by() returns a new queryset rather than
+    # sorting in place). Member order must now follow korp.rank.
+    a_korp = make_korp(name='The Korp')
+    zebra = make_creature(name='Zebra', korp={'id': a_korp.id, 'rank': 'z-member'})
+    alice = make_creature(name='Alice', korp={'id': a_korp.id, 'rank': 'a-member'})
+    a_korp.leader = alice.id
+    a_korp.save()
+
+    group = bot.create_group(name='mysingouin', description='test')
+    korp_command(group, bot)
+    callback = get_callback(group, 'korp')
+
+    ctx = make_ctx()
+    await callback(ctx, str(zebra.id))
+
+    embed = ctx.respond.call_args.kwargs['embed']
+    assert embed.description.index('Alice') < embed.description.index('Zebra')
+
+
 async def test_korp_not_in_a_korp_responds_once(bot, make_ctx, get_callback, make_creature):
     creature = make_creature(name='Loner')
 

@@ -70,7 +70,7 @@ def squad(group_singouin, bot):
                 ]
 
             SquadMembers = CreatureDocument.objects(squad__id=Creature.squad.id)
-            SquadMembers.order_by('squad.rank')
+            SquadMembers = SquadMembers.order_by('squad.rank')
 
             # Dirty Gruik to find the max(len(Member.name))
             w = max(len(SquadMember.name) for SquadMember in SquadMembers)
