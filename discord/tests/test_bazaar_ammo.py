@@ -51,10 +51,7 @@ async def test_satchel_not_found_responds_once(bot, make_ctx, get_callback):
     assert ctx.respond.call_count == 1
 
 
-async def test_buy_with_insufficient_balance_goes_negative(bot, make_ctx, get_callback, make_satchel):  # noqa: E501
-    # Documents a real gap: there is no balance check on the 'Buy' path, so
-    # a purchase the account can't afford still goes through and leaves a
-    # negative currency balance instead of being rejected.
+async def test_buy_with_insufficient_balance_is_rejected(bot, make_ctx, get_callback, make_satchel):  # noqa: E501
     singouin_id = uuid.uuid4()
     satchel = make_satchel(_id=singouin_id, ammo={'cal22': 0}, currency={'banana': 0})
 
@@ -67,13 +64,11 @@ async def test_buy_with_insufficient_balance_goes_negative(bot, make_ctx, get_ca
 
     assert ctx.respond.call_count == 1
     satchel.reload()
-    assert satchel.currency.banana == -1
+    assert satchel.currency.banana == 0
+    assert satchel.ammo.cal22 == 0
 
 
-async def test_sell_more_than_owned_goes_negative(bot, make_ctx, get_callback, make_satchel):
-    # Documents a real gap: there is no stock check on the 'Sell' path, so
-    # selling ammunition the account doesn't have still goes through and
-    # leaves a negative ammo count instead of being rejected.
+async def test_sell_more_than_owned_is_rejected(bot, make_ctx, get_callback, make_satchel):
     singouin_id = uuid.uuid4()
     satchel = make_satchel(_id=singouin_id, ammo={'cal22': 0}, currency={'banana': 0})
 
@@ -86,4 +81,5 @@ async def test_sell_more_than_owned_goes_negative(bot, make_ctx, get_callback, m
 
     assert ctx.respond.call_count == 1
     satchel.reload()
-    assert satchel.ammo.cal22 == -10
+    assert satchel.ammo.cal22 == 0
+    assert satchel.currency.banana == 0

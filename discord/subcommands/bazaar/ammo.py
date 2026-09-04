@@ -67,13 +67,36 @@ def ammo(group_bazaar, bot):
 
             item_price_total = int(item_price * 10)
             if action_type == 'Sell':
+                current_ammo = getattr(Satchel.ammo, caliber, 0)
+                if current_ammo < 10:
+                    msg = f'Not enough {caliber.capitalize()} in stock (have {current_ammo}, need 10)'  # noqa: E501
+                    await ctx.respond(
+                        embed=discord.Embed(
+                            description=msg,
+                            colour=discord.Colour.orange()
+                            ),
+                        ephemeral=True,
+                        )
+                    logger.info(f'{h} └──> Bazaar-Sell Query KO ({msg})')
+                    return
                 # We do the financial transaction
                 Satchel.currency.banana += item_price_total
                 # We update the Ammunition count
-                setattr(Satchel.ammo, caliber, getattr(Satchel.ammo, caliber, 0) - 10)
+                setattr(Satchel.ammo, caliber, current_ammo - 10)
                 embed_title = 'Sold to the Bazaar:'
 
             elif action_type == 'Buy':
+                if Satchel.currency.banana < item_price_total:
+                    msg = f'Not enough bananas (have {Satchel.currency.banana}, need {item_price_total})'  # noqa: E501
+                    await ctx.respond(
+                        embed=discord.Embed(
+                            description=msg,
+                            colour=discord.Colour.orange()
+                            ),
+                        ephemeral=True,
+                        )
+                    logger.info(f'{h} └──> Bazaar-Sell Query KO ({msg})')
+                    return
                 # We do the financial transaction
                 Satchel.currency.banana -= item_price_total
                 # We update the Ammunition count
