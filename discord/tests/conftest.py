@@ -74,8 +74,9 @@ from mongo.models.Highscore import (  # noqa: E402
     HighscoreInternalGenericResource,
     HighscoreProfession,
     )
+from mongo.models.Instance import InstanceDocument  # noqa: E402
 from mongo.models.Item import ItemDocument  # noqa: E402
-from mongo.models.Meta import MetaArmor  # noqa: E402
+from mongo.models.Meta import MetaArmor, MetaRace, MetaWeapon  # noqa: E402
 from mongo.models.Satchel import (  # noqa: E402
     SatchelAmmo,
     SatchelCurrency,
@@ -85,10 +86,12 @@ from mongo.models.Satchel import (  # noqa: E402
     )
 from mongo.models.User import UserDocument  # noqa: E402
 
-# Deterministic Meta reference data for tests that price/describe items.
-# Seeded here (module level, before any subcommand import) so it's present
-# by the time `variables.py` builds its metaIndexed dict.
+# Deterministic Meta reference data for tests that price/describe items or
+# monsters. Seeded here (module level, before any subcommand import) so
+# it's present by the time `variables.py` builds its metaIndexed dict.
 MetaArmor(_id=1, name='Test Armor', size='2x2', tier=1).save()
+MetaWeapon(_id=1, name='Test Weapon', size='1x1', tier=0, max_ammo=30).save()
+MetaRace(_id=1, name='Test Monster', min_b=1, min_g=2, min_m=3, min_p=4, min_r=5, min_v=6).save()
 
 
 @pytest.fixture(autouse=True)
@@ -97,6 +100,7 @@ def _clean_db():
     yield
     CreatureDocument.drop_collection()
     HighscoreDocument.drop_collection()
+    InstanceDocument.drop_collection()
     ItemDocument.drop_collection()
     SatchelDocument.drop_collection()
     UserDocument.drop_collection()
@@ -241,3 +245,15 @@ def make_item():
         data.update(overrides)
         return ItemDocument(**data).save()
     return _make_item
+
+
+@pytest.fixture
+def make_instance():
+    def _make_instance(**overrides):
+        data = dict(
+            creator=uuid.uuid4(),
+            map=1,
+            )
+        data.update(overrides)
+        return InstanceDocument(**data).save()
+    return _make_instance
