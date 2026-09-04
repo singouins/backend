@@ -47,18 +47,34 @@ def depop(group_godmode):
         h = f'[#{ctx.channel.name}][{ctx.author.name}]'
         logger.info(f'{h} /{group_godmode} depop {instance_uuid} {creature_uuid}')
 
-        Creature = CreatureDocument.objects(_id=creature_uuid).get()
+        try:
+            Creature = CreatureDocument.objects(_id=creature_uuid).get()
+        except CreatureDocument.DoesNotExist:
+            msg = 'Singouin NotFound'
+            await ctx.respond(
+                embed=discord.Embed(
+                    description=msg,
+                    colour=discord.Colour.orange()
+                    ),
+                ephemeral=True,
+                )
+            logger.info(f'{h} └──> Godmode-Depop Query KO ({msg})')
+            return
+
         logger.trace(f"{h} ├──> Godmode-Depop {rmtd[Creature.rarity]} {Creature.name}")
 
         # WE WILL KILL HERE ONLY NON PLAYABLE CREATURES FOR SAFETY
         if Creature.account:
             msg = 'You can only kill NPC Creatures'
             logger.warning(msg)
-            embed = discord.Embed(
-                description=msg,
-                colour=discord.Colour.orange()
-            )
-            return embed
+            await ctx.respond(
+                embed=discord.Embed(
+                    description=msg,
+                    colour=discord.Colour.orange()
+                    ),
+                ephemeral=True,
+                )
+            return
 
         try:
             # It is a NON playable Creature (Monster)
