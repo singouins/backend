@@ -4,7 +4,6 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from mongoengine.errors import DoesNotExist
 
 from subcommands.singouin.wallet import wallet as wallet_command
 
@@ -57,17 +56,12 @@ async def test_wallet_race_5_to_8_currency_field_typo_errors_out(bot, make_ctx, 
     assert 'Query KO' in embed.description
 
 
-async def test_wallet_unknown_creature_raises_instead_of_responding(bot, make_ctx, get_callback):
-    # Documents a real gap: unlike most other singouin commands, the
-    # Creature/Satchel lookups here aren't wrapped in a try/except, so an
-    # unresolved UUID propagates as an unhandled DoesNotExist instead of a
-    # user-facing error embed.
+async def test_wallet_unknown_creature_responds_once(bot, make_ctx, get_callback):
     group = bot.create_group(name='mysingouin', description='test')
     wallet_command(group, bot)
     callback = get_callback(group, 'wallet')
 
     ctx = make_ctx()
-    with pytest.raises(DoesNotExist):
-        await callback(ctx, str(uuid.uuid4()))
+    await callback(ctx, str(uuid.uuid4()))
 
-    assert ctx.respond.call_count == 0
+    assert ctx.respond.call_count == 1

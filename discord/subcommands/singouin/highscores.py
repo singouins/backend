@@ -35,8 +35,20 @@ def highscores(group_singouin, bot):
 
         file = None
 
-        Creature = CreatureDocument.objects(_id=singouinuuid).get()
-        Highscore = HighscoreDocument.objects(_id=singouinuuid).get()
+        try:
+            Creature = CreatureDocument.objects(_id=singouinuuid).get()
+            Highscore = HighscoreDocument.objects(_id=singouinuuid).get()
+        except (CreatureDocument.DoesNotExist, HighscoreDocument.DoesNotExist):
+            msg = 'Singouin NotFound'
+            await ctx.respond(
+                embed=discord.Embed(
+                    description=msg,
+                    colour=discord.Colour.orange()
+                    ),
+                ephemeral=True,
+                )
+            logger.info(f'{h} └──> Singouin-HighScore Query KO ({msg})')
+            return
 
         """
         # We try to fetch the TOP1 HighScores

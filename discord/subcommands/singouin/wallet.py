@@ -53,8 +53,20 @@ def wallet(group_singouin, bot):
 
         file = None
 
-        Creature = CreatureDocument.objects(_id=singouinuuid).get()
-        Satchel = SatchelDocument.objects(_id=singouinuuid).get()
+        try:
+            Creature = CreatureDocument.objects(_id=singouinuuid).get()
+            Satchel = SatchelDocument.objects(_id=singouinuuid).get()
+        except (CreatureDocument.DoesNotExist, SatchelDocument.DoesNotExist):
+            msg = 'Singouin NotFound'
+            await ctx.respond(
+                embed=discord.Embed(
+                    description=msg,
+                    colour=discord.Colour.orange()
+                    ),
+                ephemeral=True,
+                )
+            logger.info(f'{h} └──> Singouin-Wallet Query KO ({msg})')
+            return
 
         try:
             embed = discord.Embed(

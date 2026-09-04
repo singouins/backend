@@ -4,7 +4,6 @@ import uuid
 from unittest.mock import patch
 
 import pytest
-from mongoengine.errors import DoesNotExist
 
 from subcommands.singouin.stats import stats as stats_command
 
@@ -37,16 +36,12 @@ async def test_stats_displays_base_stats_and_aggro(bot, make_ctx, get_callback, 
     assert '`6`' in field.value
 
 
-async def test_stats_unknown_creature_raises_instead_of_responding(bot, make_ctx, get_callback):
-    # Documents a real gap: like wallet.py, the Creature lookup isn't
-    # wrapped in a try/except, so an unresolved UUID propagates as an
-    # unhandled DoesNotExist instead of a user-facing error embed.
+async def test_stats_unknown_creature_responds_once(bot, make_ctx, get_callback):
     group = bot.create_group(name='mysingouin', description='test')
     stats_command(group, bot)
     callback = get_callback(group, 'stats')
 
     ctx = make_ctx()
-    with pytest.raises(DoesNotExist):
-        await callback(ctx, str(uuid.uuid4()))
+    await callback(ctx, str(uuid.uuid4()))
 
-    assert ctx.respond.call_count == 0
+    assert ctx.respond.call_count == 1
