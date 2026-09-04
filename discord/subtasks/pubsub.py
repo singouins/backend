@@ -46,7 +46,7 @@ async def check(bot: discord.Client) -> None:
                         User = UserDocument.objects(_id=account_uuid).get()
                     except UserDocument.DoesNotExist:
                         logger.warning("UserDocument Query KO (404)")
-                        return
+                        continue
                     except Exception as e:
                         logger.error(f'MongoDB Query KO [{e}]')
                     else:
