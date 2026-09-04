@@ -75,8 +75,10 @@ from mongo.models.Highscore import (  # noqa: E402
     HighscoreInternalGenericResource,
     HighscoreProfession,
     )
+from mongo.models.Aggro import AggroDocument  # noqa: E402
 from mongo.models.Instance import InstanceDocument  # noqa: E402
 from mongo.models.Item import ItemDocument  # noqa: E402
+from mongo.models.Korp import KorpDocument  # noqa: E402
 from mongo.models.Meta import MetaArmor, MetaRace, MetaWeapon  # noqa: E402
 from mongo.models.Satchel import (  # noqa: E402
     SatchelAmmo,
@@ -85,6 +87,7 @@ from mongo.models.Satchel import (  # noqa: E402
     SatchelResource,
     SatchelShard,
     )
+from mongo.models.Squad import SquadDocument  # noqa: E402
 from mongo.models.User import UserDocument  # noqa: E402
 
 # Deterministic Meta reference data for tests that price/describe items or
@@ -108,12 +111,15 @@ def _clean_db():
     lose it after the first drop.
     """
     yield
+    AggroDocument.objects.delete()
     AuctionDocument.objects.delete()
     CreatureDocument.objects.delete()
     HighscoreDocument.objects.delete()
     InstanceDocument.objects.delete()
     ItemDocument.objects.delete()
+    KorpDocument.objects.delete()
     SatchelDocument.objects.delete()
+    SquadDocument.objects.delete()
     UserDocument.objects.delete()
 
 
@@ -321,3 +327,41 @@ def make_auction():
         data.update(overrides)
         return AuctionDocument(**data).save()
     return _make_auction
+
+
+@pytest.fixture
+def make_korp():
+    def _make_korp(**overrides):
+        data = dict(
+            _id=uuid.uuid4(),
+            leader=uuid.uuid4(),
+            name='Test Korp',
+            )
+        data.update(overrides)
+        return KorpDocument(**data).save()
+    return _make_korp
+
+
+@pytest.fixture
+def make_squad():
+    def _make_squad(**overrides):
+        data = dict(
+            _id=uuid.uuid4(),
+            leader=uuid.uuid4(),
+            )
+        data.update(overrides)
+        return SquadDocument(**data).save()
+    return _make_squad
+
+
+@pytest.fixture
+def make_aggro():
+    def _make_aggro(**overrides):
+        data = dict(
+            _id=uuid.uuid4(),
+            amount=0,
+            bearer=uuid.uuid4(),
+            )
+        data.update(overrides)
+        return AggroDocument(**data).save()
+    return _make_aggro
