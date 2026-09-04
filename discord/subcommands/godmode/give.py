@@ -72,8 +72,6 @@ def give(group_godmode):
         h = f'[#{ctx.channel.name}][{ctx.author.name}]'
         logger.info(f'{h} /{group_godmode} give {singouin_uuid} {rarity} {metatype} {metaid} {bound_type}')  # noqa: E501
 
-        Creature = CreatureDocument.objects(_id=singouin_uuid).get()
-
         try:
             Creature = CreatureDocument.objects(_id=singouin_uuid).get()
         except CreatureDocument.DoesNotExist:
