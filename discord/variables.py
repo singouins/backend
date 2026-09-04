@@ -38,7 +38,10 @@ env_vars = {
     "YQ_CHECK": str2bool(os.getenv("YQ_CHECK", "False")),
 }
 # Print the environment variables for debugging
+_SENSITIVE_VARS = {"DISCORD_TOKEN"}
 for var, value in env_vars.items():
+    if var in _SENSITIVE_VARS and value is not None:
+        value = f'{value[:4]}...{value[-4:]}'
     logger.debug(f"{var}: {value}")
 
 
