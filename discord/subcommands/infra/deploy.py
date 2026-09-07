@@ -1,7 +1,7 @@
 # -*- coding: utf8 -*-
 
+import asyncio
 import discord
-import time
 
 from kubernetes import client
 from loguru import logger
@@ -270,7 +270,7 @@ def deploy(group_admin):
                             colour=discord.Colour.green()
                             )
                         )
-                time.sleep(1)
+                await asyncio.sleep(1)
             logger.trace('K8s Pods Query OK')
 
         logger.info(f'{h} └──> K8s Query OK')
