@@ -33,4 +33,8 @@ WORKDIR /code
 USER api
 
 # Entry point
+# Production runs main.py directly. The supervising wrapper (entrypoint.sh)
+# is still shipped in the image so it can be selected per-deployment via a
+# Kubernetes command override (see docs/DEBUG.md) without changing the
+# default image behavior.
 ENTRYPOINT ["/code/main.py"]
