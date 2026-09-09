@@ -4,4 +4,3 @@ loguru==0.7.3
 mongoengine==0.29.3
 prometheus-flask-exporter==0.23.2
 redis==8.1.0
-requests==2.34.2

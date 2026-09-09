@@ -1,0 +1,3 @@
+# Test-only dependencies, not required by the app itself.
+# Installed in CI before running pytest.
+requests==2.34.2

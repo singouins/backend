@@ -97,6 +97,10 @@ jobs:
         if [ -f ${{ matrix.python-app }}/requirements.txt ]; \
           then pip install -r ${{ matrix.python-app }}/requirements.txt; \
         fi
+        echo "--- Installing test-only requirements"
+        if [ -f ${{ matrix.python-app }}/requirements-tests.txt ]; \
+          then pip install -r ${{ matrix.python-app }}/requirements-tests.txt; \
+        fi
 
     - name: Lint with flake8 📝
       run: |
