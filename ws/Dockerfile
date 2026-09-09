@@ -23,7 +23,8 @@ ENV PATH="/code/.local/bin:${PATH}"
 COPY --chown=ws:ws --from=builder /code /code
 
 # Copy application code
-COPY --chown=ws:ws /ws/main.py  /code/main.py
+COPY --chown=ws:ws /ws/main.py        /code/main.py
+COPY --chown=ws:ws /ws/entrypoint.sh  /code/entrypoint.sh
 
 # Set working directory
 WORKDIR /code
@@ -32,4 +33,8 @@ WORKDIR /code
 USER ws
 
 # Entry point
+# Production runs main.py directly. The supervising wrapper (entrypoint.sh)
+# is still shipped in the image so it can be selected per-deployment via a
+# Kubernetes command override (see docs/DEBUG.md) without changing the
+# default image behavior.
 ENTRYPOINT ["python3", "/code/main.py"]
