@@ -162,11 +162,26 @@ async def notify_clients(message: str) -> None:
             )
 
 
+def _resolve_real_ip(headers) -> str:
+    real_ip = headers.get('X-Real-IP')
+    if real_ip:
+        return real_ip
+    # X-Forwarded-For may be a comma-separated proxy chain
+    # (client, proxy1, proxy2, ...) - the first entry is the original
+    # client. Some load balancers/ingresses only set this header, not
+    # X-Real-IP.
+    forwarded_for = headers.get('X-Forwarded-For')
+    if forwarded_for:
+        return forwarded_for.split(',')[0].strip()
+    return 'unknown'
+
+
 async def websocket_handler(websocket: ServerConnection) -> None:
     # Register client
-    # nginx always sets this header today, but don't let a missing header
-    # (e.g. a future direct/bypassing connection) drop the connection.
-    real_ip = websocket.request.headers.get('X-Real-IP', 'unknown')
+    # nginx always sets X-Real-IP today, but don't let a missing/differently
+    # -proxied header (e.g. a future direct/bypassing connection, or a load
+    # balancer that only sets X-Forwarded-For) drop the connection.
+    real_ip = _resolve_real_ip(websocket.request.headers)
     logger.info(f'Client connection OK (@IP:{real_ip})')
 
     CLIENTS.add(websocket)
