@@ -37,4 +37,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python3 -c "import socket,sys; s=socket.create_connection(('127.0.0.1',40404),3); sys.exit(0 if s.recv(16).startswith(b'OK') else 1)"
 
 # Entry point
+# Production runs main.py directly. The supervising wrapper (entrypoint.sh)
+# is still shipped in the image so it can be selected per-deployment via a
+# Kubernetes command override (see docs/DEBUG.md) without changing the
+# default image behavior.
 ENTRYPOINT ["/code/main.py"]
