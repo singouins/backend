@@ -18,6 +18,7 @@ boilerplate `prometheus_client` adds automatically.
 | `thread_count_fungus` | Gauge | - | Of those, how many are `Fungus` |
 | `thread_count_salamander` | Gauge | - | Of those, how many are `Salamander` |
 | `creature_tick_seconds` | Histogram | `species` | Time spent processing one Creature's tick (`get_pa`/`get_creature`/`status`/`move`), excluding the deliberate `sleep()` |
+| `creature_thread_died_unexpectedly_total` | Counter | `species` | A Creature's thread was found dead by the reconciler without having gone through `creature_kill()` - i.e. it crashed |
 
 `creature_tick_seconds` is aggregated **per species, not per creature** — a
 single Salamander vs a hundred Salamanders show up in the same time series,
@@ -86,6 +87,35 @@ sum(rate(creature_tick_seconds_bucket[5m])) by (le, species)
 ```
 Panel type: **Heatmap**, with "Format" set to `Time series buckets` (Grafana
 detects the `le` label and stacks it into a heatmap automatically).
+
+## Graphing `creature_thread_died_unexpectedly_total`
+
+Same rule as the Histogram above: this is a **Counter**, so query it with
+`rate()`/`increase()`, not raw.
+
+**Are we losing Creature threads?**
+```promql
+increase(creature_thread_died_unexpectedly_total[15m])
+```
+Panel type: **Stat** or **Time series**. In normal operation this should be
+flat at 0 - any nonzero value means the reconciler (`ai/utils/actions.py`,
+swept every `RECONCILE_INTERVAL` seconds, default 30s, see `variables.py`)
+found a Creature thread that had died without going through `creature_kill()`.
+That's always worth investigating: it means something threw an unhandled
+exception inside that Creature's tick loop (`Mob.run()` in
+`ai/bestiaire/_Mob.py`) badly enough to kill the whole thread. Check the logs
+around the same timestamp for a `Creature thread died unexpectedly` line -
+it includes the Creature's id/name so you can correlate with whatever else
+that Creature was doing.
+
+**This is the metric that would have caught the Redis connection-pool
+exhaustion bug found during this service's load testing** (see
+`ARCHITECTURE.md`) - before the reconciler existed, that failure mode was
+completely invisible: `/threads` and `thread_count_total` kept reporting
+every Creature as alive while the underlying OS threads had actually died.
+A Grafana alert on `increase(creature_thread_died_unexpectedly_total[15m]) > 0`
+is a reasonable default if you want to be paged on this rather than notice it
+in a dashboard.
 
 ## A note on alerting for tick overrun
 
