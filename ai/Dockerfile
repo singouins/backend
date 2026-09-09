@@ -25,9 +25,10 @@ COPY --chown=ai:ai --from=builder /code /code
 # Copy application code
 COPY --chown=ai:ai /ai/bestiaire    /code/bestiaire
 COPY --chown=ai:ai /ai/utils        /code/utils
-COPY --chown=ai:ai /ai/main.py      /code/main.py
-COPY --chown=ai:ai /ai/variables.py /code/variables.py
-COPY --chown=ai:ai /mongo           /code/mongo
+COPY --chown=ai:ai /ai/main.py       /code/main.py
+COPY --chown=ai:ai /ai/variables.py  /code/variables.py
+COPY --chown=ai:ai /ai/entrypoint.sh /code/entrypoint.sh
+COPY --chown=ai:ai /mongo            /code/mongo
 
 # Set working directory
 WORKDIR /code
@@ -36,4 +37,8 @@ WORKDIR /code
 USER ai
 
 # Entry point
+# Production runs main.py directly. The supervising wrapper (entrypoint.sh)
+# is still shipped in the image so it can be selected per-deployment via a
+# Kubernetes command override (see docs/DEBUG.md) without changing the
+# default image behavior.
 ENTRYPOINT ["/code/main.py"]
