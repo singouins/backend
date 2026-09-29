@@ -65,7 +65,7 @@ pydantic==2.13.4
     #   flask-openapi3
 pydantic-core==2.46.4
     # via pydantic
-pyjwt==2.13.0
+pyjwt==2.14.0
     # via flask-jwt-extended
 pymongo==4.17.0
     # via mongoengine
