@@ -56,7 +56,7 @@ pydantic==2.13.4
     # via -r requirements.in
 pydantic-core==2.46.4
     # via pydantic
-pyjwt==2.13.0
+pyjwt==2.14.0
     # via flask-jwt-extended
 pymongo==4.10.1
     # via mongoengine
