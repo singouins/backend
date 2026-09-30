@@ -52,9 +52,9 @@ prometheus-client==0.21.0
     # via prometheus-flask-exporter
 prometheus-flask-exporter==0.23.2
     # via -r requirements.in
-pydantic==2.13.4
+pydantic==2.13.5
     # via -r requirements.in
-pydantic-core==2.46.4
+pydantic-core==2.46.5
     # via pydantic
 pyjwt==2.13.0
     # via flask-jwt-extended
