@@ -5,8 +5,8 @@
 #    pip-compile --no-index --strip-extras requirements.in
 #
 loguru==0.7.3
-    # via -r requirements.in
+    # via -r ws/requirements.in
 redis==8.1.0
-    # via -r requirements.in
-websockets==17.0.1
-    # via -r requirements.in
+    # via -r ws/requirements.in
+websockets==17.1
+    # via -r ws/requirements.in
