@@ -6,7 +6,7 @@
 #
 dnspython==2.7.0
     # via pymongo
-flake8==7.3.0
+flake8==7.4.1
     # via -r requirements.in
 iniconfig==2.1.0
     # via pytest
@@ -20,9 +20,9 @@ packaging==25.0
     # via pytest
 pluggy==1.6.0
     # via pytest
-pycodestyle==2.14.0
+pycodestyle==2.15.0
     # via flake8
-pyflakes==3.4.0
+pyflakes==4.0.0
     # via flake8
 pygments==2.20.0
     # via pytest

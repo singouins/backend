@@ -1,4 +1,4 @@
-flake8==7.3.0
+flake8==7.4.1
 loguru==0.7.3
 mongoengine==0.29.3
 pytest==9.1.1
