@@ -69,7 +69,7 @@ pyjwt==2.13.0
     # via flask-jwt-extended
 pymongo==4.17.0
     # via mongoengine
-redis==6.2.0
+redis==8.1.0
     # via -r auth/requirements.in
 typing-extensions==4.16.0
     # via

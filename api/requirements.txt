@@ -60,7 +60,7 @@ pyjwt==2.13.0
     # via flask-jwt-extended
 pymongo==4.10.1
     # via mongoengine
-redis==6.2.0
+redis==8.1.0
     # via yarqueue
 requests==2.34.2
     # via -r api/requirements.in
