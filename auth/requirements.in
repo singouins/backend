@@ -3,7 +3,7 @@ flask-bcrypt==1.0.1
 flask-cors==6.0.5
 flask-jwt-extended==4.7.4
 flask-openapi3[swagger]==4.3.2
-gunicorn==26.1.0
+gunicorn==26.2.0
 loguru==0.7.3
 mongoengine==0.29.3
 pydantic[email]==2.13.5
