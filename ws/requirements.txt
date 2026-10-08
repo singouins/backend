@@ -8,5 +8,5 @@ loguru==0.7.3
     # via -r ws/requirements.in
 redis==8.1.0
     # via -r ws/requirements.in
-websockets==17.1
+websockets==17.2
     # via -r ws/requirements.in
