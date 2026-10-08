@@ -31,6 +31,7 @@ from utils.gunilog import (
     )
 from utils.redis import r
 
+import routes.internal
 import routes.log
 import routes.map
 import routes.meta
@@ -173,6 +174,11 @@ app.add_url_rule('/mypc/<uuid:creatureuuid>/squad/<uuid:squaduuid>/leave', metho
 app.add_url_rule('/mypc/<uuid:creatureuuid>/squad/<uuid:squaduuid>/decline', methods=['POST'], view_func=routes.mypc.squad.squad_decline)  # noqa: E501
 # Routes: /view
 app.add_url_rule('/mypc/<uuid:creatureuuid>/view', methods=['GET'], view_func=routes.mypc.view.view_get)  # noqa: E501
+#
+# Routes: /internal (service-to-service, guarded by SEP_INTERNAL_TOKEN, not JWT)
+#
+# <string:> converters on purpose: malformed ids are a 400 from the view, not a routing 404
+app.add_url_rule('/internal/instance/<string:instanceid>/creature/<string:creatureid>/eject', methods=['POST'], view_func=routes.internal.eject)  # noqa: E501
 #
 # Routes: /map
 #

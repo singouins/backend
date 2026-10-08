@@ -27,6 +27,12 @@ for var, value in env_vars.items():
 # still verifies/revokes JWTs minted by the auth service, via the same
 # secret and the same Redis blocklist keys. See main.py's JWTManager.
 SEP_SECRET_KEY = os.environ['SEP_SECRET_KEY']
+# SEP_INTERNAL_TOKEN guards the /internal/* routes, called service-to-service
+# by the fight resolver (never by a client). Shared with the resolver through
+# a k8s Secret. Unset = internal routes disabled (they answer 503).
+SEP_INTERNAL_TOKEN = os.environ.get("SEP_INTERNAL_TOKEN")
+if not SEP_INTERNAL_TOKEN:
+    logger.warning('SEP_INTERNAL_TOKEN unset: /internal/* routes are disabled')
 
 # YarQueue variables
 YQ_BROADCAST = os.environ.get("YQ_BROADCAST", f"{env_vars['API_ENV']}:yarqueue:broadcast")

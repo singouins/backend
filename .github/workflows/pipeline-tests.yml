@@ -202,6 +202,8 @@ jobs:
 
           SEP_SECRET_KEY: ${{ secrets.SEP_SECRET_KEY || 'ci-throwaway-jwt-key' }}
           API_ENV: ${{ vars.API_ENV || 'CI' }}
+          # Plain test-only token for api/tests/test_15_internal_eject.py; production uses a Secret
+          SEP_INTERNAL_TOKEN: ci-internal-token
 
           MONGO_HOST: ${{ vars.MONGO_HOST || '127.0.0.1' }}
           MONGO_USER: ${{ vars.MONGO_USER || 'singouins' }}
