@@ -131,8 +131,9 @@ def _document(events, store, _id, instance, account=None, delete_error=None):
 def world(modules, monkeypatch):
     """
     Runs the remove view on a minimal Flask app. Creatures and Instances live
-    in dicts; cput(), purge_creature_keys() and Creature.delete() append to
-    `events` in call order.
+    in dicts; r.publish(), purge_creature_keys() and Creature.delete() append
+    to `events` in call order. failures['publish'] / failures['purge'] set to
+    an exception make that call raise instead.
     """
     route = modules.route
     events = []
@@ -145,8 +146,20 @@ def world(modules, monkeypatch):
         }
     monkeypatch.setattr(route, 'CreatureDocument', types.SimpleNamespace(objects=_Collection(creatures)))  # noqa: E501
     monkeypatch.setattr(route, 'InstanceDocument', types.SimpleNamespace(objects=_Collection(instances)))  # noqa: E501
-    monkeypatch.setattr(route, 'cput', lambda channel, msg: events.append(('publish', channel, msg)))  # noqa: E501
-    monkeypatch.setattr(route, 'purge_creature_keys', lambda **kwargs: events.append(('purge', kwargs)))  # noqa: E501
+    failures = {}
+
+    def publish(channel, data):
+        if failures.get('publish') is not None:
+            raise failures['publish']
+        events.append(('publish', channel, json.loads(data)))
+
+    def purge(**kwargs):
+        if failures.get('purge') is not None:
+            raise failures['purge']
+        events.append(('purge', kwargs))
+
+    monkeypatch.setattr(route, 'r', types.SimpleNamespace(publish=publish))
+    monkeypatch.setattr(route, 'purge_creature_keys', purge)
 
     app = Flask(__name__)
     app.add_url_rule(
@@ -173,6 +186,7 @@ def world(modules, monkeypatch):
 
     return types.SimpleNamespace(
         add=add, post=post, events=events, creatures=creatures, instances=instances,
+        failures=failures,
         )
 
 
@@ -306,6 +320,101 @@ def test_remove_without_token_is_401(world):
     assert MONSTER_ID in world.creatures
 
 
+def _kill(creature_json):
+    return ('publish', PS_AI_CREATURE, {
+        "action": 'kill',
+        "instance": json.dumps({"_id": str(INSTANCE_ID)}),
+        "creature": creature_json,
+        })
+
+
+#
+# Precedence between the answers: token, then 400, then 404, then gone
+#
+@pytest.mark.parametrize('instance', [None, OTHER_INSTANCE_ID])
+def test_remove_unknown_instance_wins_over_gone(world, instance):
+    # Unknown Instance AND a creature that would be 'gone' (unknown, or elsewhere)
+    unknown = uuid.uuid4()
+    if instance is not None:
+        world.add(MONSTER_ID, instance=instance)
+
+    response = world.post(
+        creatureid=MONSTER_ID if instance is not None else uuid.uuid4(),
+        instanceid=unknown,
+        )
+
+    assert response.status_code == 404
+    assert response.json['success'] is False
+    assert world.events == []
+
+
+def test_remove_invalid_body_wins_over_unknown_instance(world):
+    response = world.post(instanceid=uuid.uuid4(), body={"reason": 'death'})
+
+    assert response.status_code == 400
+    assert response.json['success'] is False
+    assert world.events == []
+
+
+def test_remove_missing_token_wins_over_invalid_body(world):
+    world.add(MONSTER_ID)
+
+    response = world.post(token=None, body={"reason": 'death'})
+
+    assert response.status_code == 401
+    assert world.events == []
+    assert MONSTER_ID in world.creatures
+
+
+#
+# Failures: always a 500 (the resolver retries on 5xx only), never a 200
+#
+def test_remove_publish_failure_is_500_and_touches_nothing(world):
+    world.add(MONSTER_ID)
+    world.failures['publish'] = ConnectionError('redis down')
+
+    response = world.post()
+
+    assert response.status_code == 500
+    assert response.json['success'] is False
+    assert response.json['payload'] is None
+    # The publish is the first side effect: no purge, no delete
+    assert world.events == []
+    assert MONSTER_ID in world.creatures
+
+
+def test_remove_purge_failure_is_500_and_keeps_the_creature(world):
+    world.add(MONSTER_ID)
+    world.failures['purge'] = ConnectionError('redis down')
+
+    response = world.post()
+
+    assert response.status_code == 500
+    assert response.json['success'] is False
+    assert [event[0] for event in world.events] == ['publish']
+    assert MONSTER_ID in world.creatures
+
+
+def test_remove_retry_after_delete_failure_is_removed(world):
+    world.add(MONSTER_ID, delete_error=RuntimeError('mongo down'))
+    assert world.post().status_code == 500
+    assert MONSTER_ID in world.creatures
+
+    # The resolver retries once Mongo is back
+    world.add(MONSTER_ID)
+    response = world.post()
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    creature_json = json.dumps({"_id": str(MONSTER_ID), "name": 'Monster'})
+    purge = ('purge', {"creatureuuid": MONSTER_ID, "instanceuuid": INSTANCE_ID})
+    assert world.events == [
+        _kill(creature_json), purge,
+        _kill(creature_json), purge, ('delete', MONSTER_ID),
+        ]
+    assert MONSTER_ID not in world.creatures
+
+
 #
 # Instance close (utils/instance.py): the kill reaches the AI on its env channel
 #
@@ -383,6 +492,23 @@ def test_ps_ai_creature_follows_api_env(monkeypatch):
 def test_ps_ai_creature_without_api_env_does_not_crash(monkeypatch):
     monkeypatch.delenv('API_ENV', raising=False)
     assert _load_api_variables(monkeypatch).PS_AI_CREATURE == 'ai-creature-none'
+
+
+def test_api_env_unset_is_warned_at_startup(monkeypatch):
+    from loguru import logger
+    records = []
+    sink = logger.add(lambda message: records.append(message.record), level='WARNING')
+    try:
+        monkeypatch.delenv('API_ENV', raising=False)
+        _load_api_variables(monkeypatch)
+        monkeypatch.setenv('API_ENV', 'DEV')
+        _load_api_variables(monkeypatch)
+    finally:
+        logger.remove(sink)
+
+    # Once, for the load without API_ENV only
+    warned = [record for record in records if record['message'].startswith('API_ENV unset')]
+    assert len(warned) == 1
 
 
 #
