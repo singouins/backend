@@ -10,6 +10,7 @@ from mongo.models.Creature import CreatureDocument
 from mongo.models.Instance import InstanceDocument
 
 from utils.redis import r, purge_creature_keys, purge_instance_keys
+from variables import PS_AI_CREATURE
 
 
 def leave_instance(creature: CreatureDocument, instance: InstanceDocument) -> str:
@@ -77,7 +78,7 @@ def leave_instance(creature: CreatureDocument, instance: InstanceDocument) -> st
         # We send in pubsub channel for IA to spawn the Mobs
         try:
             r.publish(
-                'ai-creature',
+                PS_AI_CREATURE,
                 json.dumps({
                     "action": 'kill',
                     "instance": instance.to_json(),
@@ -85,7 +86,7 @@ def leave_instance(creature: CreatureDocument, instance: InstanceDocument) -> st
                     }),
                 )
         except Exception as e:
-            msg = f'{h} Publish(ai-creature/kill) KO [{e}]'
+            msg = f'{h} Publish({PS_AI_CREATURE}/kill) KO [{e}]'
             logger.error(msg)
 
         # Nothing of a dead mob may outlive it: its PA pools and actives go
