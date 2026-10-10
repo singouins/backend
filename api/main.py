@@ -179,6 +179,7 @@ app.add_url_rule('/mypc/<uuid:creatureuuid>/view', methods=['GET'], view_func=ro
 #
 # <string:> converters on purpose: malformed ids are a 400 from the view, not a routing 404
 app.add_url_rule('/internal/instance/<string:instanceid>/creature/<string:creatureid>/eject', methods=['POST'], view_func=routes.internal.eject)  # noqa: E501
+app.add_url_rule('/internal/instance/<string:instanceid>/creature/<string:creatureid>/remove', methods=['POST'], view_func=routes.internal.remove)  # noqa: E501
 #
 # Routes: /map
 #

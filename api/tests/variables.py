@@ -7,6 +7,9 @@ import uuid
 GUNICORN_PORT   = os.environ.get("GUNICORN_PORT", 5000)
 API_ENV         = os.environ.get("API_ENV", 5000)
 API_URL         = f'http://127.0.0.1:{GUNICORN_PORT}'
+# Same name and rule as api/variables.py: the AI creature pubsub channel.
+# utils/instance.py and routes/internal read it at import time
+PS_AI_CREATURE  = f"ai-creature-{str(API_ENV).lower()}"
 
 # /auth/* moved to its own service - api's own tests still need a live
 # login to test everything else, so this points at wherever that service

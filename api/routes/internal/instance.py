@@ -15,11 +15,12 @@ from mongo.models.Instance import InstanceDocument
 from routes._decorators import internal
 from utils.decorators import check_is_json
 from utils.instance import leave_instance
-from utils.redis import purge_creature_keys, qput
-from variables import YQ_DISCORD
+from utils.redis import cput, purge_creature_keys, qput
+from variables import PS_AI_CREATURE, YQ_DISCORD
 
 
-class EjectSchema(BaseModel):
+class InternalCallSchema(BaseModel):
+    """ Body of every /internal/instance/* call. Logged only, never acted upon. """
     reason: str
     by: Optional[uuid.UUID] = None
     at: datetime.datetime
@@ -37,7 +38,7 @@ def _bad_request(msg: str, payload=None):
     ), 400
 
 
-def _gone(h: str, eject: EjectSchema, why: str):
+def _gone(h: str, eject: InternalCallSchema, why: str):
     """ Idempotent answer: the creature is not in this instance, nothing changed. """
     msg = f'{h} Eject OK (result:gone)'
     logger.info(f'{msg} {why} (requestId:{eject.requestId}, reason:{eject.reason}, by:{eject.by})')  # noqa: E501
@@ -111,7 +112,7 @@ def eject(instanceid, creatureid):
         return _bad_request('JSON object expected')
 
     try:
-        eject = EjectSchema(**request.json)  # Validate and parse the JSON data
+        eject = InternalCallSchema(**request.json)  # Validate and parse the JSON data
     except ValidationError as e:
         return _bad_request('Validation and parsing error', e.errors())
 
@@ -164,5 +165,103 @@ def eject(instanceid, creatureid):
             "success": True,
             "msg": msg,
             "payload": {"result": result},
+        }
+    ), 200
+
+
+def _remove_gone(h: str, call: InternalCallSchema, why: str):
+    """ Idempotent answer: the monster is not in this instance, nothing changed. """
+    msg = f'{h} Remove OK (result:gone)'
+    logger.info(f'{msg} {why} (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')  # noqa: E501
+    return jsonify(
+        {
+            "success": True,
+            "msg": msg,
+            "payload": {"result": 'gone'},
+        }
+    ), 200
+
+
+# API: POST /internal/instance/<string:instanceid>/creature/<string:creatureid>/remove
+# Called by the fight resolver when a monster dies: it leaves the map at once
+# (designer ruling Q99). Idempotent and state-based, like eject:
+# - unknown Instance: 404 (final for the resolver);
+# - Creature unknown or not in exactly <instanceid>: {"result": "gone"}, nothing touched;
+# - a Singouin (has an account): 400, it goes through /eject;
+# - otherwise the monster is removed as instance close does it: AI kill, Redis
+#   keys purged, Creature deleted last. No Discord notice, corpse or rewards.
+# The resolver retries on 5xx only, so an internal failure is never a 200.
+@internal.token
+@check_is_json
+def remove(instanceid, creatureid):
+    # Same id and body handling as eject: malformed ids are a 400, not a routing 404
+    try:
+        instanceid = uuid.UUID(instanceid)
+        creatureid = uuid.UUID(creatureid)
+    except ValueError as e:
+        return _bad_request(f'Malformed id [{e}]')
+
+    if not isinstance(request.json, dict):
+        return _bad_request('JSON object expected')
+
+    try:
+        call = InternalCallSchema(**request.json)  # Validate and parse the JSON data
+    except ValidationError as e:
+        return _bad_request('Validation and parsing error', e.errors())
+
+    h = f'[Creature.id:{creatureid}]'
+
+    try:
+        Instance = InstanceDocument.objects(_id=instanceid).first()
+        if Instance is None:
+            msg = f'{h} Remove KO (Instance({instanceid}) NOTFOUND)'
+            logger.warning(f'{msg} (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')  # noqa: E501
+            return jsonify(
+                {
+                    "success": False,
+                    "msg": msg,
+                    "payload": None,
+                }
+            ), 404
+
+        Creature = CreatureDocument.objects(_id=creatureid).first()
+        if Creature is None:
+            return _remove_gone(h, call, 'Creature NOTFOUND')
+
+        if Creature.instance is None or str(Creature.instance) != str(instanceid):
+            return _remove_gone(h, call, f'Creature not in Instance({instanceid}) (instance:{Creature.instance})')  # noqa: E501
+
+        if Creature.account is not None:
+            return _bad_request(f'{h} Creature has an account (Singouin): use eject')
+
+        # Same steps and order as the instance close in utils/instance.py.
+        # The AI is told first; a publish failure is logged by cput(), not raised
+        cput(PS_AI_CREATURE, {
+            "action": 'kill',
+            "instance": Instance.to_json(),
+            "creature": Creature.to_json(),
+            })
+        # Nothing of a dead mob may outlive it: its PA pools and actives go
+        purge_creature_keys(creatureuuid=Creature.id, instanceuuid=Instance.id)
+        # ALWAYS KILL CREATURE THE LAST
+        Creature.delete()
+    except Exception as e:
+        msg = f'{h} Remove KO [{e}]'
+        logger.error(f'{msg} (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 500
+
+    msg = f'{h} Remove OK (result:removed)'
+    logger.info(f'{msg} Instance({instanceid}) (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')  # noqa: E501
+    return jsonify(
+        {
+            "success": True,
+            "msg": msg,
+            "payload": {"result": 'removed'},
         }
     ), 200
