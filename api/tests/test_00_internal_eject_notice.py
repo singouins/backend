@@ -63,19 +63,21 @@ class _Query:
         return self.document
 
 
-def _creature(korp_id=None, squad_id=None, korp=True, squad=True):
+def _creature(korp_id=None, squad_id=None, korp=True, squad=True,
+              korp_rank=None, squad_rank=None):
     """
     A Singouin as the route reads it. Like the real CreatureKorp/CreatureSquad,
     the embedded documents exist with id None when there is no membership;
     korp/squad False means the embedded document itself is None (old docs).
+    korp_rank/squad_rank set the rank ('Pending' for an invitee, not a member).
     """
     return types.SimpleNamespace(
         id=CREATURE_ID,
         name='PJTest',
         account=uuid.uuid4(),
         instance=INSTANCE_ID,
-        korp=types.SimpleNamespace(id=korp_id, rank=None) if korp else None,
-        squad=types.SimpleNamespace(id=squad_id, rank=None) if squad else None,
+        korp=types.SimpleNamespace(id=korp_id, rank=korp_rank) if korp else None,
+        squad=types.SimpleNamespace(id=squad_id, rank=squad_rank) if squad else None,
         )
 
 
@@ -219,6 +221,36 @@ def test_death_scopes_no_embedded_documents(route):
     assert route._death_scopes(_creature(korp_id=KORP_ID, squad=False)) == [f'Korp-{KORP_ID}']
 
 
+# A Pending invitee is not a member (design ruling 2026-10-10): the invite
+# routes set rank 'Pending' along with the id. Korp and Squad are independent.
+def test_death_scopes_korp_pending(route):
+    assert route._death_scopes(_creature(korp_id=KORP_ID, korp_rank='Pending')) == []
+    assert route._death_scopes(_creature(
+        korp_id=KORP_ID, squad_id=SQUAD_ID, korp_rank='Pending', squad_rank='Member',
+        )) == [f'Squad-{SQUAD_ID}']
+
+
+def test_death_scopes_squad_pending(route):
+    assert route._death_scopes(_creature(squad_id=SQUAD_ID, squad_rank='Pending')) == []
+    assert route._death_scopes(_creature(
+        korp_id=KORP_ID, squad_id=SQUAD_ID, korp_rank='Member', squad_rank='Pending',
+        )) == [f'Korp-{KORP_ID}']
+
+
+def test_death_scopes_both_pending(route):
+    assert route._death_scopes(_creature(
+        korp_id=KORP_ID, squad_id=SQUAD_ID, korp_rank='Pending', squad_rank='Pending',
+        )) == []
+
+
+def test_death_scopes_missing_rank_counts_as_member(route):
+    creature = types.SimpleNamespace(
+        korp=types.SimpleNamespace(id=KORP_ID),
+        squad=types.SimpleNamespace(id=SQUAD_ID),
+        )
+    assert route._death_scopes(creature) == [f'Korp-{KORP_ID}', f'Squad-{SQUAD_ID}']
+
+
 #
 # The route: what is queued, and when
 #
@@ -240,6 +272,14 @@ def test_eject_death_korp_only_queues_one(eject):
     response, queued = eject(_creature(korp_id=KORP_ID))
     assert response.status_code == 200
     assert queued == [_message(f'Korp-{KORP_ID}')]
+
+
+def test_eject_death_korp_pending_queues_squad_only(eject):
+    response, queued = eject(_creature(
+        korp_id=KORP_ID, squad_id=SQUAD_ID, korp_rank='Pending', squad_rank='Member',
+        ))
+    assert response.status_code == 200
+    assert queued == [_message(f'Squad-{SQUAD_ID}')]
 
 
 def test_eject_death_no_korp_no_squad_queues_none(eject):

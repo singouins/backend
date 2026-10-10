@@ -57,13 +57,17 @@ def _death_scopes(Creature) -> list:
     CreatureKorp.id and CreatureSquad.id default to None, so an embedded
     korp/squad document does not mean a membership: only a non-None id does
     (korp/squad themselves may be None on old documents).
+
+    A Pending invitee is not a member: an invite sets the id together with
+    rank 'Pending', and such a Singouin gets no scope for that group. Korp and
+    Squad are checked independently. A missing rank counts as a member.
     """
     scopes = []
     korp_id = getattr(Creature.korp, 'id', None)
-    if korp_id is not None:
+    if korp_id is not None and getattr(Creature.korp, 'rank', None) != 'Pending':
         scopes.append(f'Korp-{korp_id}')
     squad_id = getattr(Creature.squad, 'id', None)
-    if squad_id is not None:
+    if squad_id is not None and getattr(Creature.squad, 'rank', None) != 'Pending':
         scopes.append(f'Squad-{squad_id}')
     return scopes
 
