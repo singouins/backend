@@ -15,7 +15,8 @@ from mongo.models.Instance import InstanceDocument
 from routes._decorators import internal
 from utils.decorators import check_is_json
 from utils.instance import leave_instance
-from utils.redis import purge_creature_keys
+from utils.redis import purge_creature_keys, qput
+from variables import YQ_DISCORD
 
 
 class EjectSchema(BaseModel):
@@ -49,6 +50,37 @@ def _gone(h: str, eject: EjectSchema, why: str):
     ), 200
 
 
+def _death_scopes(Creature) -> list:
+    """
+    Discord scopes told about a Singouin's death: its Korp, then its Squad.
+
+    CreatureKorp.id and CreatureSquad.id default to None, so an embedded
+    korp/squad document does not mean a membership: only a non-None id does
+    (korp/squad themselves may be None on old documents).
+    """
+    scopes = []
+    korp_id = getattr(Creature.korp, 'id', None)
+    if korp_id is not None:
+        scopes.append(f'Korp-{korp_id}')
+    squad_id = getattr(Creature.squad, 'id', None)
+    if squad_id is not None:
+        scopes.append(f'Squad-{squad_id}')
+    return scopes
+
+
+def _announce_death(h: str, Creature):
+    """ Queues the death message for Discord. Never raises: the eject is already done. """
+    try:
+        for scope in _death_scopes(Creature):
+            qput(YQ_DISCORD, {
+                "ciphered": False,
+                "payload": f':skull: **{Creature.name}** died in an Instance',
+                "embed": None,
+                "scope": scope})
+    except Exception as e:
+        logger.error(f'{h} Death announce KO [{e}]')
+
+
 #
 # Routes /internal/instance/*
 #
@@ -57,6 +89,8 @@ def _gone(h: str, eject: EjectSchema, why: str):
 # the creature is ejected only if it is in exactly <instanceid>; otherwise
 # nothing is touched and the answer is {"result": "gone"}. The resolver retries
 # on 5xx only, so an internal failure must never be a 200 with success false.
+# A death (reason 'death') that actually ejects the creature ('left' or
+# 'closed') is announced on Discord to its Korp and Squad; 'gone' never is.
 @internal.token
 @check_is_json
 def eject(instanceid, creatureid):
@@ -114,6 +148,10 @@ def eject(instanceid, creatureid):
                 "payload": None,
             }
         ), 500
+
+    # Only once the eject succeeded, so a notification issue can never change its answer
+    if eject.reason == 'death' and result in ('left', 'closed'):
+        _announce_death(h, Creature)
 
     msg = f'{h} Eject OK (result:{result})'
     logger.info(f'{msg} Instance({instanceid}) (requestId:{eject.requestId}, reason:{eject.reason}, by:{eject.by})')  # noqa: E501
