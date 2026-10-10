@@ -8,6 +8,7 @@ from utils.decorators import (
     check_creature_exists,
     check_creature_in_instance,
     )
+from utils.discord import discord_scopes
 from utils.instance import leave_instance
 from utils.redis import qput
 from variables import YQ_DISCORD
@@ -41,11 +42,7 @@ def leave(creatureuuid, instanceuuid):
             msg = f'{g.h} Instance({g.Instance.id}) Leave OK'
 
         # We put the info in queue for Discord
-        scopes = []
-        if hasattr(g.Creature.korp, 'id'):
-            scopes.append(f'Korp-{g.Creature.korp.id}')
-        if hasattr(g.Creature.korp, 'id'):
-            scopes.append(f'Squad-{g.Creature.squad.id}')
+        scopes = discord_scopes(g.Creature)
         for scope in scopes:
             # Discord Queue
             qput(YQ_DISCORD, {

@@ -11,6 +11,7 @@ from utils.decorators import (
     check_creature_exists,
     check_instance_exists,
     )
+from utils.discord import discord_scopes
 from utils.redis import qput
 from variables import YQ_DISCORD
 
@@ -65,11 +66,7 @@ def join(creatureuuid, instanceuuid):
             ), 200
     else:
         # We put the info in queue for Discord
-        scopes = []
-        if hasattr(g.Creature.korp, 'id'):
-            scopes.append(f'Korp-{g.Creature.korp.id}')
-        if hasattr(g.Creature.korp, 'id'):
-            scopes.append(f'Squad-{g.Creature.squad.id}')
+        scopes = discord_scopes(g.Creature)
         for scope in scopes:
             # Discord Queue
             qput(YQ_DISCORD, {
