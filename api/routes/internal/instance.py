@@ -1,6 +1,7 @@
 # -*- coding: utf8 -*-
 
 import datetime
+import json
 import uuid
 
 from typing import Optional
@@ -15,7 +16,7 @@ from mongo.models.Instance import InstanceDocument
 from routes._decorators import internal
 from utils.decorators import check_is_json
 from utils.instance import leave_instance
-from utils.redis import cput, purge_creature_keys, qput
+from utils.redis import purge_creature_keys, qput, r
 from variables import PS_AI_CREATURE, YQ_DISCORD
 
 
@@ -235,12 +236,18 @@ def remove(instanceid, creatureid):
             return _bad_request(f'{h} Creature has an account (Singouin): use eject')
 
         # Same steps and order as the instance close in utils/instance.py.
-        # The AI is told first; a publish failure is logged by cput(), not raised
-        cput(PS_AI_CREATURE, {
-            "action": 'kill',
-            "instance": Instance.to_json(),
-            "creature": Creature.to_json(),
-            })
+        # The AI is told first, and with r.publish() (not cput(), which only
+        # logs a failure): an unpublished kill must be a 500 so the resolver
+        # retries, else the AI keeps a thread on a deleted mob. Being the first
+        # side effect, a failure here leaves everything untouched
+        r.publish(
+            PS_AI_CREATURE,
+            json.dumps({
+                "action": 'kill',
+                "instance": Instance.to_json(),
+                "creature": Creature.to_json(),
+                }),
+            )
         # Nothing of a dead mob may outlive it: its PA pools and actives go
         purge_creature_keys(creatureuuid=Creature.id, instanceuuid=Instance.id)
         # ALWAYS KILL CREATURE THE LAST
