@@ -57,7 +57,7 @@ propcache==0.3.2
     #   yarl
 py-cord==2.8.1
     # via -r requirements.in
-pymongo==4.10.1
+pymongo==4.18.2
     # via mongoengine
 python-dateutil==2.9.0.post0
     # via kubernetes
