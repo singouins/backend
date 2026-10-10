@@ -21,6 +21,8 @@ for var, value in env_vars.items():
     if var in _SENSITIVE_VARS and value is not None:
         value = f'{value[:4]}...{value[-4:]}'
     logger.debug(f"{var}: {value}")
+if not env_vars['API_ENV']:
+    logger.warning('API_ENV unset: Redis keys, queues and the AI channel are named after None')
 
 # API variables
 # SEP_SECRET_KEY is needed here too (not just in auth/) - this service
