@@ -21,10 +21,10 @@ KORP_ID = '11111111-1111-1111-1111-111111111111'
 SQUAD_ID = '22222222-2222-2222-2222-222222222222'
 
 
-def creature(korp_id=None, squad_id=None):
+def creature(korp_id=None, squad_id=None, korp_rank=None, squad_rank=None):
     return SimpleNamespace(
-        korp=SimpleNamespace(id=korp_id, rank=None),
-        squad=SimpleNamespace(id=squad_id, rank=None),
+        korp=SimpleNamespace(id=korp_id, rank=korp_rank),
+        squad=SimpleNamespace(id=squad_id, rank=squad_rank),
     )
 
 
@@ -51,3 +51,31 @@ def test_neither():
 
 def test_embedded_objects_none():
     assert discord_scopes(SimpleNamespace(korp=None, squad=None)) == []
+
+
+# A Pending invitee is not a member (design ruling 2026-10-10): the invite
+# routes set rank='Pending' along with the id. Korp and Squad are independent.
+
+def test_korp_pending_squad_member():
+    assert discord_scopes(
+        creature(KORP_ID, SQUAD_ID, korp_rank='Pending', squad_rank='Member')
+    ) == [f'Squad-{SQUAD_ID}']
+
+
+def test_squad_pending_korp_member():
+    assert discord_scopes(
+        creature(KORP_ID, SQUAD_ID, korp_rank='Member', squad_rank='Pending')
+    ) == [f'Korp-{KORP_ID}']
+
+
+def test_both_pending():
+    assert discord_scopes(
+        creature(KORP_ID, SQUAD_ID, korp_rank='Pending', squad_rank='Pending')
+    ) == []
+
+
+def test_missing_rank_counts_as_member():
+    assert discord_scopes(SimpleNamespace(
+        korp=SimpleNamespace(id=KORP_ID),
+        squad=SimpleNamespace(id=SQUAD_ID),
+    )) == [f'Korp-{KORP_ID}', f'Squad-{SQUAD_ID}']
