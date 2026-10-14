@@ -6,6 +6,8 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
+from mongo.models.Creature import CreatureSlots
+
 from utils.decorators import (
     check_creature_exists,
     check_creature_pa,
@@ -31,6 +33,19 @@ PA_COST_BLUE = 0
 @check_creature_pa(red=PA_COST_RED, blue=PA_COST_BLUE)
 @check_item_exists
 def unequip(creatureuuid, type, slotname, itemuuid):
+    # Path parameter check: an attribute name that is not a slot (validate,
+    # _data, ...) passes the setattr below, then breaks save() with a 500
+    if slotname not in CreatureSlots._fields:
+        msg = f"{g.h} Unequip KO (slotname:{slotname} unknown)"
+        logger.warning(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 400
+
     try:
         if slotname == 'righthand':
             if g.Creature.slots.righthand.id == itemuuid:

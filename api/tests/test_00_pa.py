@@ -15,7 +15,9 @@ sys.path.append(LOCAL_PATH)
 
 from utils.pa import (  # noqa: E402
     BLUE_PA_MAX,
+    EQUIP_RED_PA_BY_SIZE,
     RED_PA_MAX,
+    equip_cost,
     pa_cost_split,
     pa_durations,
     pa_from_ttl,
@@ -308,3 +310,31 @@ def test_consume_pa_outside_instance_is_noop(pa_redis, redis_spy):
     assert redis_spy.method_calls == []
     assert not pa_redis.r.exists(f'pytest:pas:{CREATURE_ID}:red')
     assert not pa_redis.r.exists(f'pytest:pas:{CREATURE_ID}:blue')
+
+
+#
+# equip_cost(): designer rulings Q102 + Q108, red PA by item size, no blue
+#
+@pytest.mark.parametrize('size, red', [
+    ('1x2', 1),
+    ('2x2', 2),
+    ('2x3', 3),
+    ('2x4', 4),
+    ('3x4', 4),
+])
+def test_equip_cost_red_by_size(size, red):
+    assert equip_cost(size) == {'red': red, 'blue': 0}
+
+
+def test_equip_cost_table_matches_ruling():
+    assert EQUIP_RED_PA_BY_SIZE == {'1x2': 1, '2x2': 2, '2x3': 3, '2x4': 4, '3x4': 4}
+
+
+def test_equip_cost_never_costs_blue():
+    for size in EQUIP_RED_PA_BY_SIZE:
+        assert equip_cost(size)['blue'] == 0
+
+
+@pytest.mark.parametrize('size', ['1x1', '4x4', '2X2', '', 'banana'])
+def test_equip_cost_unknown_size_is_none(size):
+    assert equip_cost(size) is None
