@@ -17,6 +17,16 @@ from typing import Optional
 RED_PA_MAX = 16
 BLUE_PA_MAX = 8
 
+# Designer rulings Q102 + Q108: equipping an item costs red PA by item size,
+# no blue PA. Unequipping stays free (Q109).
+EQUIP_RED_PA_BY_SIZE = {
+    '1x2': 1,
+    '2x2': 2,
+    '2x3': 3,
+    '2x4': 4,
+    '3x4': 4,
+}
+
 
 def pa_durations(tick: int) -> dict:
     """
@@ -144,6 +154,26 @@ def pa_spend_split(blue_available: int, red_cost: int, blue_cost: int) -> dict:
     return {
         'red': red_cost + shortfall,
         'blue': blue_spent,
+    }
+
+
+def equip_cost(size: str) -> Optional[dict]:
+    """
+    PA cost of equipping an item, by item size.
+
+    Designer rulings Q102 + Q108: red PA only, by size (see EQUIP_RED_PA_BY_SIZE).
+
+    :param size: The item size from its meta, e.g. '2x3'.
+
+    :return: {'red': red PA cost, 'blue': 0}, or None for a size not in the table.
+    """
+    red = EQUIP_RED_PA_BY_SIZE.get(size)
+    if red is None:
+        return None
+
+    return {
+        'red': red,
+        'blue': 0,
     }
 
 

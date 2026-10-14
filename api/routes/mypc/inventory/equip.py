@@ -6,22 +6,51 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
-from mongo.models.Creature import CreatureSlot
+from mongo.models.Creature import CreatureSlot, CreatureSlots
 
 from utils.decorators import (
     check_creature_exists,
-    check_creature_pa,
     check_item_exists,
     )
-from utils.pa import instance_tick
+from utils.pa import equip_cost, instance_tick, pa_shortfall_colour
 from utils.redis import r, get_pa, consume_pa
-from variables import metaNames
+from variables import metaIndexed
 
 #
 # Inventory.equip specifics
 #
-PA_COST_RED = 0
-PA_COST_BLUE = 2
+# Item metatypes that can be equipped (metaIndexed also holds 'race')
+EQUIPABLE_TYPES = ('armor', 'weapon')
+# Design ruling (2026-10-14): a slot only accepts its own item category.
+# Armour meta 'slot' value -> the Creature slots it may go in
+ARMOR_SLOTS = {
+    'Feet': {'feet'},
+    'Hands': {'hands'},
+    'Head': {'head'},
+    'Legs': {'legs'},
+    'Shoulders': {'shoulders'},
+    'Torso': {'torso'},
+    'Shield': {'lefthand'},
+    }
+WEAPON_SLOTS = {'righthand', 'lefthand', 'holster'}
+# Largest item area (sizex * sizey) the left hand holds. A Shield gets 6
+# (2x2, 2x3); a 2x4 shield is refused on purpose until the slot-perks card
+# ("Main gauche bouclier 2x4" perk) exists.
+LEFTHAND_MAX_AREA = 4
+LEFTHAND_SHIELD_MAX_AREA = 6
+
+
+def allowed_slots(metatype, itemmeta):
+    """
+    Returns the set of Creature slot names the item may be equipped in.
+    An unknown metatype or an armour without a known meta 'slot' gets an
+    empty set, so every slot is refused.
+    """
+    if metatype == 'weapon':
+        return set(WEAPON_SLOTS)
+    if metatype == 'armor':
+        return set(ARMOR_SLOTS.get(itemmeta.get('slot'), set()))
+    return set()
 
 
 #
@@ -31,11 +60,88 @@ PA_COST_BLUE = 2
 @jwt_required()
 # Custom decorators
 @check_creature_exists
-@check_creature_pa(red=PA_COST_RED, blue=PA_COST_BLUE)
 @check_item_exists
 def equip(creatureuuid, type, slotname, itemuuid):
-    itemmeta = [x for x in metaNames[type] if x['_id'] == g.Item.metaid][0]
+    # Path parameter checks: unchecked values used to end in a 500
+    if type not in EQUIPABLE_TYPES or type != g.Item.metatype:
+        msg = (f"{g.h} Equip KO (type:{type} not equipable"
+               f" or not the item metatype:{g.Item.metatype})")
+        logger.warning(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 400
+
+    if slotname not in CreatureSlots._fields:
+        msg = f"{g.h} Equip KO (slotname:{slotname} unknown)"
+        logger.warning(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 400
+
+    itemmeta = metaIndexed[type].get(g.Item.metaid)
+    if itemmeta is None:
+        msg = f"{g.h} Equip KO (Meta {type}:{g.Item.metaid} NOTFOUND)"
+        logger.warning(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 404
+
+    if slotname not in allowed_slots(type, itemmeta):
+        msg = (f"{g.h} Equip KO (slotname:{slotname} not allowed"
+               f" for {type} slot:{itemmeta.get('slot')})")
+        logger.warning(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 400
+
     sizex, sizey = itemmeta['size'].split("x")
+
+    # PA check (designer rulings Q102 + Q108: red PA by item size, no blue).
+    # Done here, not with check_creature_pa, as the cost depends on the item.
+    cost = equip_cost(itemmeta['size'])
+    if cost is None:
+        msg = f"{g.h} No equip PA cost for this item size (size:{itemmeta['size']})"
+        logger.error(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 200
+
+    tick = instance_tick(g.Creature)
+    if tick is None:
+        # Designer ruling: outside an Instance there are no PA, nothing to check
+        logger.trace(f'{g.h} not in an Instance: no PA check')
+    else:
+        pa = get_pa(creatureuuid=g.Creature.id, tick=tick)
+        color = pa_shortfall_colour(pa['red']['pa'], pa['blue']['pa'], cost['red'], cost['blue'])
+        if color is not None:
+            msg = f'{g.h} Not enough PA({color}) for this action'
+            return jsonify(
+                {
+                    "success": False,
+                    "msg": msg,
+                    "payload": pa,
+                }
+            ), 200
 
     # Pre-requisite checks
     for carac in ['m', 'r', 'g', 'v', 'p', 'b']:
@@ -74,7 +180,7 @@ def equip(creatureuuid, type, slotname, itemuuid):
         elif slotname == 'righthand':
             if g.Creature.slots.righthand:
                 # Something is already equipped in RH
-                equippedMeta = metaNames['weapon'][g.Creature.slots.righthand.metaid]
+                equippedMeta = metaIndexed['weapon'][g.Creature.slots.righthand.metaid]
                 # We equip a 1H weapon
                 if int(sizex) * int(sizey) <= 6:
                     if equippedMeta['onehanded'] is True:
@@ -129,7 +235,11 @@ def equip(creatureuuid, type, slotname, itemuuid):
                         metatype=g.Item.metatype,
                         )
         elif slotname == 'lefthand':
-            if int(sizex) * int(sizey) <= 4:
+            if type == 'armor' and itemmeta.get('slot') == 'Shield':
+                max_area = LEFTHAND_SHIELD_MAX_AREA
+            else:
+                max_area = LEFTHAND_MAX_AREA
+            if int(sizex) * int(sizey) <= max_area:
                 # It fits inside the left hand
                 g.Creature.slots.lefthand = CreatureSlot(
                     id=g.Item.id,
@@ -172,8 +282,7 @@ def equip(creatureuuid, type, slotname, itemuuid):
 
     # Here everything should be OK with the equip
     # We consume the PA
-    tick = instance_tick(g.Creature)
-    consume_pa(creatureuuid=creatureuuid, bluepa=PA_COST_BLUE, tick=tick)
+    consume_pa(creatureuuid=creatureuuid, redpa=cost['red'], bluepa=cost['blue'], tick=tick)
 
     # We put the info in queue for ws
     try:
