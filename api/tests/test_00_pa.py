@@ -155,6 +155,14 @@ def test_pa_shortfall_colour_negative_red_without_red_cost_is_blue():
     assert pa_shortfall_colour(-1, 0, 0, 1) == 'blue'
 
 
+def test_red_only_cost_ignores_the_blue_pool():
+    """ Red-only actions (reload, ruling Q15): blue is neither required nor spent. """
+    assert pa_shortfall_colour(3, 0, 3, 0) is None
+    assert pa_shortfall_colour(2, 8, 3, 0) == 'red'
+    assert pa_cost_split(3, 8, 3, 0) == {'red': 3, 'blue': 0}
+    assert pa_spend_split(8, 3, 0) == {'red': 3, 'blue': 0}
+
+
 #
 # get_pa() / consume_pa() against fakeredis
 #

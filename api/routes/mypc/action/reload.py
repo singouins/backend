@@ -13,17 +13,10 @@ from utils.decorators import (
     check_item_exists,
     check_user_exists,
     check_creature_owned,
-    check_creature_pa,
     )
-from utils.pa import instance_tick
+from utils.pa import instance_tick, pa_shortfall_colour
 from utils.redis import get_pa, consume_pa
 from variables import metaNames
-
-#
-# Action.reload specifics
-#
-PA_COST_RED = 0
-PA_COST_BLUE = 2
 
 
 #
@@ -35,7 +28,6 @@ PA_COST_BLUE = 2
 @check_user_exists
 @check_creature_exists
 @check_creature_owned
-@check_creature_pa(red=PA_COST_RED, blue=PA_COST_BLUE)
 @check_item_exists
 def reload(creatureuuid, itemuuid):
     itemmeta = [x for x in metaNames[g.Item.metatype] if x['_id'] == g.Item.metaid][0]
@@ -58,6 +50,27 @@ def reload(creatureuuid, itemuuid):
                 "payload": None,
             }
         ), 200
+
+    # PA check (designer ruling Q15: reload costs the weapon's pas_reload in red PA, no blue).
+    # Done here, not with check_creature_pa, as the cost depends on the weapon.
+    # Before the Satchel read: a refusal costs no Mongo query and mutates nothing.
+    cost_red = itemmeta['pas_reload']
+    tick = instance_tick(g.Creature)
+    if tick is None:
+        # Designer ruling: outside an Instance there are no PA, nothing to check
+        logger.trace(f'{g.h} not in an Instance: no PA check')
+    else:
+        pa = get_pa(creatureuuid=g.Creature.id, tick=tick)
+        color = pa_shortfall_colour(pa['red']['pa'], pa['blue']['pa'], cost_red, 0)
+        if color is not None:
+            msg = f'{g.h} Not enough PA({color}) for this action'
+            return jsonify(
+                {
+                    "success": False,
+                    "msg": msg,
+                    "payload": pa,
+                }
+            ), 200
 
     try:
         Satchel = SatchelDocument.objects().filter(_id=g.Creature.id).get()
@@ -92,8 +105,7 @@ def reload(creatureuuid, itemuuid):
             }
         Satchel.update(**update_query)
         # We consume the PA
-        tick = instance_tick(g.Creature)
-        consume_pa(creatureuuid=g.Creature.id, bluepa=PA_COST_BLUE, tick=tick)
+        consume_pa(creatureuuid=g.Creature.id, redpa=cost_red, bluepa=0, tick=tick)
     except Exception as e:
         msg = f'{g.h} Reload Query KO [{e}]'
         logger.error(msg)
