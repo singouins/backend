@@ -10,18 +10,11 @@ from mongo.models.Creature import CreatureSlot
 
 from utils.decorators import (
     check_creature_exists,
-    check_creature_pa,
     check_item_exists,
     )
-from utils.pa import instance_tick
+from utils.pa import equip_cost, instance_tick, pa_shortfall_colour
 from utils.redis import r, get_pa, consume_pa
-from variables import metaNames
-
-#
-# Inventory.equip specifics
-#
-PA_COST_RED = 0
-PA_COST_BLUE = 2
+from variables import metaIndexed, metaNames
 
 
 #
@@ -31,11 +24,41 @@ PA_COST_BLUE = 2
 @jwt_required()
 # Custom decorators
 @check_creature_exists
-@check_creature_pa(red=PA_COST_RED, blue=PA_COST_BLUE)
 @check_item_exists
 def equip(creatureuuid, type, slotname, itemuuid):
     itemmeta = [x for x in metaNames[type] if x['_id'] == g.Item.metaid][0]
     sizex, sizey = itemmeta['size'].split("x")
+
+    # PA check (designer rulings Q102 + Q108: red PA by item size, no blue).
+    # Done here, not with check_creature_pa, as the cost depends on the item.
+    cost = equip_cost(itemmeta['size'])
+    if cost is None:
+        msg = f"{g.h} No equip PA cost for this item size (size:{itemmeta['size']})"
+        logger.error(msg)
+        return jsonify(
+            {
+                "success": False,
+                "msg": msg,
+                "payload": None,
+            }
+        ), 200
+
+    tick = instance_tick(g.Creature)
+    if tick is None:
+        # Designer ruling: outside an Instance there are no PA, nothing to check
+        logger.trace(f'{g.h} not in an Instance: no PA check')
+    else:
+        pa = get_pa(creatureuuid=g.Creature.id, tick=tick)
+        color = pa_shortfall_colour(pa['red']['pa'], pa['blue']['pa'], cost['red'], cost['blue'])
+        if color is not None:
+            msg = f'{g.h} Not enough PA({color}) for this action'
+            return jsonify(
+                {
+                    "success": False,
+                    "msg": msg,
+                    "payload": pa,
+                }
+            ), 200
 
     # Pre-requisite checks
     for carac in ['m', 'r', 'g', 'v', 'p', 'b']:
@@ -74,7 +97,7 @@ def equip(creatureuuid, type, slotname, itemuuid):
         elif slotname == 'righthand':
             if g.Creature.slots.righthand:
                 # Something is already equipped in RH
-                equippedMeta = metaNames['weapon'][g.Creature.slots.righthand.metaid]
+                equippedMeta = metaIndexed['weapon'][g.Creature.slots.righthand.metaid]
                 # We equip a 1H weapon
                 if int(sizex) * int(sizey) <= 6:
                     if equippedMeta['onehanded'] is True:
@@ -172,8 +195,7 @@ def equip(creatureuuid, type, slotname, itemuuid):
 
     # Here everything should be OK with the equip
     # We consume the PA
-    tick = instance_tick(g.Creature)
-    consume_pa(creatureuuid=creatureuuid, bluepa=PA_COST_BLUE, tick=tick)
+    consume_pa(creatureuuid=creatureuuid, redpa=cost['red'], bluepa=cost['blue'], tick=tick)
 
     # We put the info in queue for ws
     try:
