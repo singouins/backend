@@ -3,3 +3,5 @@
 pytest==9.1.1
 # In-memory Redis for tests/test_00_pa.py (get_pa/consume_pa without a server).
 fakeredis==2.39.0
+# In-memory Mongo for tests/test_00_craft_consumable.py (the Satchel conditional update).
+mongomock==4.3.0

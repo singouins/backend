@@ -37,6 +37,7 @@ import routes.map
 import routes.meta
 import routes.mypc
 import routes.mypc.action
+import routes.mypc.action.craft
 import routes.mypc.action.item
 import routes.mypc.action.profession
 import routes.mypc.actives
@@ -126,6 +127,8 @@ app.add_url_rule('/mypc/<uuid:creatureuuid>', methods=['DELETE'], view_func=rout
 app.add_url_rule('/mypc/<uuid:creatureuuid>/action/resolver', methods=['POST'], view_func=routes.mypc.action.resolver)  # noqa: E501
 app.add_url_rule('/mypc/<uuid:creatureuuid>/action/reload/<uuid:itemuuid>', methods=['POST'], view_func=routes.mypc.action.reload)  # noqa: E501
 app.add_url_rule('/mypc/<uuid:creatureuuid>/action/unload/<uuid:itemuuid>', methods=['POST'], view_func=routes.mypc.action.unload)  # noqa: E501
+# Routes: /action/craft
+app.add_url_rule('/mypc/<uuid:creatureuuid>/action/craft/consumable/<int:metaid>', methods=['POST'], view_func=routes.mypc.action.craft.consumable)  # noqa: E501
 # Routes: /action/item
 app.add_url_rule('/mypc/<uuid:creatureuuid>/action/item/catalyze/<uuid:itemuuid>', methods=['PUT'], view_func=routes.mypc.action.item.catalyze)  # noqa: E501
 # Routes: /action/profession

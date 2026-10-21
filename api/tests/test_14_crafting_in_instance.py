@@ -9,7 +9,7 @@ from variables import (
     r,
     )
 
-# Crafting (recycling, tanning, catalyze) is only possible in town,
+# Crafting (recycling, tanning, catalyze, craft consumable) is only possible in town,
 # i.e. when the Creature is NOT in an Instance.
 REFUSAL_MSG = 'only possible in town'
 
@@ -39,6 +39,12 @@ def test_singouins_crafting_refused_in_instance(jwt_header, myitems):
 
     # Catalyze is refused
     response = requests.put(f"{API_URL}/mypc/{CREATURE_ID}/action/item/catalyze/{item['_id']}", headers=jwt_header['access'])  # noqa: E501
+    assert response.status_code == 200
+    assert response.json().get("success") is False
+    assert REFUSAL_MSG in response.json().get("msg")
+
+    # Craft consumable is refused
+    response = requests.post(f"{API_URL}/mypc/{CREATURE_ID}/action/craft/consumable/2", headers=jwt_header['access'])  # noqa: E501
     assert response.status_code == 200
     assert response.json().get("success") is False
     assert REFUSAL_MSG in response.json().get("msg")
