@@ -15,6 +15,7 @@ WEAPONS_FILE = os.path.join(
     '..', 'data', 'metas', 'weapons.json',
 )
 ALLOWED_SIZES = {'1x2', '2x2', '2x3', '2x4', '3x4'}
+ALLOWED_DMG_TYPES = {'physical', 'ballistic', 'buckshot', 'explosive'}
 
 
 def _load_weapons():
@@ -68,6 +69,19 @@ def test_meta_weapons_sizes_are_known():
         weapon['id']: weapon['size']
         for weapon in _load_weapons()
         if weapon['size'] not in ALLOWED_SIZES
+    }
+
+    assert unknown == {}
+
+
+def test_meta_weapons_dmg_types_are_known():
+    """
+    Every weapon meta damage type is one of the design sheet damage types
+    """
+    unknown = {
+        weapon['id']: weapon.get('dmg_type')
+        for weapon in _load_weapons()
+        if weapon.get('dmg_type') not in ALLOWED_DMG_TYPES
     }
 
     assert unknown == {}
