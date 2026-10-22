@@ -2,4 +2,4 @@
 # Installed in CI before running pytest.
 pytest==9.1.1
 # In-memory Redis for tests/test_00_pa.py (get_pa/consume_pa without a server).
-fakeredis==2.39.0
+fakeredis==2.40.0
