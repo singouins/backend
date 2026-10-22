@@ -17,7 +17,7 @@ dnspython==2.7.0
     #   email-validator
     #   pymongo
 email-validator==2.3.0
-    # via -r requirements.in
+    # via -r discord/requirements.in
 frozenlist==1.7.0
     # via
     #   aiohttp
@@ -27,21 +27,21 @@ idna==3.15
     #   email-validator
     #   yarl
 loguru==0.7.3
-    # via -r requirements.in
+    # via -r discord/requirements.in
 mongoengine==0.29.3
-    # via -r requirements.in
+    # via -r discord/requirements.in
 multidict==6.5.0
     # via
     #   aiohttp
     #   yarl
-pillow==12.3.0
-    # via -r requirements.in
+pillow==13.0.0
+    # via -r discord/requirements.in
 propcache==0.3.2
     # via
     #   aiohttp
     #   yarl
 py-cord==2.8.1
-    # via -r requirements.in
+    # via -r discord/requirements.in
 pymongo==4.18.2
     # via mongoengine
 redis==8.1.0
@@ -53,4 +53,4 @@ typing-extensions==4.16.0
 yarl==1.20.1
     # via aiohttp
 yarqueue==0.4.1
-    # via -r requirements.in
+    # via -r discord/requirements.in
