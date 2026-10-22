@@ -1,6 +1,6 @@
 email-validator~= 2.3
 loguru~= 0.7
 mongoengine~= 0.29
-Pillow~= 12.3
+Pillow~= 13.0
 py-cord~= 2.8.1
 yarqueue== 0.4.1
