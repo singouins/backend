@@ -1,4 +1,4 @@
 # Test-only dependencies, not required by the app itself.
 # Installed in CI before running pytest.
 pytest==9.1.1
-pytest-asyncio==1.4.0
+pytest-asyncio==1.4.1
