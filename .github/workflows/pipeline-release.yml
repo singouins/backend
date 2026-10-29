@@ -31,10 +31,10 @@ jobs:
       with:
         python-version: ${{ steps.pyver.outputs.version }}
         cache: pip
-        cache-dependency-path: requirements-lint.txt
+        cache-dependency-path: lint/requirements.txt
 
     - name: Install requirements ⏬
-      run: pip install -r requirements-lint.txt
+      run: pip install -r lint/requirements.txt
 
     - name: Lint with flake8 📝
       run: |

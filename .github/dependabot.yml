@@ -5,9 +5,9 @@
 
 version: 2
 updates:
-  # Lint-only requirements (requirements-lint.txt)
+  # Lint-only requirements (lint/requirements.txt)
   - package-ecosystem: "pip"
-    directory: "/"
+    directory: "/lint"
     schedule:
       interval: "weekly"
   - package-ecosystem: "pip"
