@@ -12,7 +12,7 @@ aiosignal==1.4.0
     # via aiohttp
 attrs==25.3.0
     # via aiohttp
-dnspython==2.7.0
+dnspython==2.9.0
     # via
     #   email-validator
     #   pymongo
