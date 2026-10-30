@@ -5,6 +5,7 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
+from mongo.constants import RARITY
 from mongo.models.Creature import CreatureDocument, CreatureSlots
 from mongo.models.Highscore import HighscoreDocument
 from mongo.models.Profession import ProfessionDocument
@@ -20,7 +21,6 @@ from routes.mypc.action.profession._tools import (
 from utils.item_lock import delete_locked_item, lock_item, unlock_item
 from utils.pa import instance_tick
 from utils.redis import consume_pa, get_pa
-from variables import rarity_array
 
 #
 # Profession.recycling specifics
@@ -109,7 +109,7 @@ def recycling(creatureuuid, itemuuid):
 
     Profession = ProfessionDocument.objects(_id=creatureuuid).get()
 
-    varx = 5 - rarity_array['item'].index(g.Item.rarity)   # between 0 and 5
+    varx = 5 - RARITY.index(g.Item.rarity)   # between 0 and 5
     vary = profession_scaled(Profession.recycling)         # between 0 and 4
     varz = probabilistic_binary(g.Creature.stats.total.b)  # between 0 and 1
 

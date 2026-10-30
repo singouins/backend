@@ -23,7 +23,6 @@ sys.path.append(LOCAL_PATH)
 # action costs its PA exactly once, whatever its roll yields.
 # Unit test: no Mongo, no Redis, the routes are loaded from their files.
 PROFESSION_ROUTES = os.path.join(LOCAL_PATH, 'routes', 'mypc', 'action', 'profession')
-RARITIES = ['Broken', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
 TICK = 3600
 LOCK_TOKEN = 'lock-token'
 # Distinct scores, to tell which one the gathering yield reads
@@ -229,7 +228,6 @@ def world(monkeypatch):
     _module(
         'variables', monkeypatch,
         env_vars={'API_ENV': 'TEST'},
-        rarity_array={'item': RARITIES},
         )
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)
 

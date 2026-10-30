@@ -4,6 +4,7 @@ import os
 
 from loguru import logger
 
+from mongo.constants import CREATURE_RARITY, RARITY
 from mongo.models.Meta import MetaArmor, MetaRace, MetaWeapon
 
 
@@ -75,15 +76,13 @@ rarity_discord = [':brown_square:', ':white_large_square:', ':green_square:', ':
 rarity_integer = [10197915, 16777215, 8311585, 4886754, 9442302, 16098851]
 
 # Rarity dictionnaries for Items
-RARITY_ITEM = ['Broken', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
-rarity_item_types_emoji = dict(zip(RARITY_ITEM, rarity_emoji))
-rarity_item_types_discord = dict(zip(RARITY_ITEM, rarity_discord))
-rarity_item_types_integer = dict(zip(RARITY_ITEM, rarity_integer))
+rarity_item_types_emoji = dict(zip(RARITY, rarity_emoji))
+rarity_item_types_discord = dict(zip(RARITY, rarity_discord))
+rarity_item_types_integer = dict(zip(RARITY, rarity_integer))
 
 # Rarity dictionnaries for Monsters
-rarity_monster = ['Small', 'Medium', 'Big', 'Unique', 'Boss', 'God']
-rarity_monster_types_emoji = dict(zip(rarity_monster, rarity_emoji))
-rarity_monster_types_discord = dict(zip(rarity_monster, rarity_discord))
+rarity_monster_types_emoji = dict(zip(CREATURE_RARITY, rarity_emoji))
+rarity_monster_types_discord = dict(zip(CREATURE_RARITY, rarity_discord))
 
 item_types_discord = {
     'armor': ':shirt:',

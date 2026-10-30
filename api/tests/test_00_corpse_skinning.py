@@ -34,7 +34,6 @@ INSTANCE_ID = uuid.uuid4()
 OTHER_INSTANCE_ID = uuid.uuid4()
 SQUAD_ID = uuid.uuid4()
 OTHER_SQUAD_ID = uuid.uuid4()
-RARITIES = ['Small', 'Medium', 'Big', 'Unique', 'Boss', 'God']
 
 
 def _identity(func):
@@ -159,7 +158,6 @@ def world(mongo, monkeypatch):
             ('pa', creatureuuid, redpa, bluepa, tick)),
         get_pa=lambda **kwargs: {'pa': 'stub'},
         )
-    _module('variables', monkeypatch, rarity_array={'creature': RARITIES})
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)
 
     route = _load('test_corpse_skinning_route', SKINNING_ROUTE)

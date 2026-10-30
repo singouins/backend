@@ -137,7 +137,6 @@ def route(monkeypatch):
         env_vars={'REDIS_HOST': '127.0.0.1', 'REDIS_PORT': 6379, 'REDIS_BASE': 0},
         metaIndexed={'race': {raceid: RACE for raceid in range(11, 17)}},
         PS_AI_CREATURE=PS_AI_CREATURE,
-        rarity_array={'creature': ['a', 'b', 'c', 'd', 'e', 'f']},
         YQ_DISCORD='yq-discord-test',
         )
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)

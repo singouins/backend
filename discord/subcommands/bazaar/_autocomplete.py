@@ -4,10 +4,11 @@ import discord
 
 from loguru import logger
 
+from mongo.constants import RARITY
 from mongo.models.Item import ItemDocument
 from mongo.models.Satchel import SatchelDocument
 
-from variables import AMMUNITIONS, metaIndexed, RARITY_ITEM, rarity_item_types_emoji as rite
+from variables import AMMUNITIONS, metaIndexed, rarity_item_types_emoji as rite
 
 
 async def get_singouin_bazaar_ammo_list(ctx: discord.AutocompleteContext):
@@ -75,7 +76,7 @@ async def get_singouin_saleable_item_list(ctx: discord.AutocompleteContext):
         sizex, sizey = map(int, meta['size'].split("x"))
 
         item_name = meta['name']
-        item_price = sizex * sizey * (meta['tier'] + 1) * RARITY_ITEM.index(Item.rarity) // 2
+        item_price = sizex * sizey * (meta['tier'] + 1) * RARITY.index(Item.rarity) // 2
         db_list.append(discord.OptionChoice(f"{eh} {item_name} ({item_price})", value=str(Item.id)))  # noqa: E501
 
     return db_list

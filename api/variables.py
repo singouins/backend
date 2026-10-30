@@ -69,18 +69,6 @@ GUNICORN_THREADS = os.environ.get("GUNICORN_THREADS", 2)
 # so a reloaded worker is re-forked with the same old code anyway
 GUNICORN_RELOAD  = os.environ.get("GUNICORN_RELOAD", False)
 
-# Static data
-rarity_levels = {
-    'creature': ['Small', 'Medium', 'Big', 'Unique', 'Boss', 'God'],
-    'standard': ['Broken', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary']
-}
-
-rarity_array = {
-    'creature': rarity_levels['creature'],
-    'resource': rarity_levels['standard'],
-    'item': rarity_levels['standard'],
-}
-
 """
 DISCLAIMER: This is some fat shit I dumped here
 

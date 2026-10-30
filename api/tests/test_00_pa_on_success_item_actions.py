@@ -111,7 +111,7 @@ def world(monkeypatch):
             ('pa', creatureuuid, redpa, bluepa, tick)),
         get_pa=lambda **kwargs: {'red': {'pa': 16}, 'blue': {'pa': 8}},
         )
-    _module('variables', monkeypatch, metaNames=META_NAMES, rarity_array={'item': RARITIES})
+    _module('variables', monkeypatch, metaNames=META_NAMES)
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)
 
     routes = {

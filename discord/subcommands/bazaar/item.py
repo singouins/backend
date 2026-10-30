@@ -5,6 +5,7 @@ import discord
 from discord.commands import option
 from loguru import logger
 
+from mongo.constants import RARITY
 from mongo.models.Highscore import HighscoreDocument
 from mongo.models.Item import ItemDocument
 from mongo.models.Satchel import SatchelDocument
@@ -17,7 +18,6 @@ from variables import (
     item_types_discord as itd,
     metaIndexed,
     rarity_item_types_discord as ritd,
-    RARITY_ITEM,
     RESOURCES_DIR,
     )
 
@@ -96,7 +96,7 @@ def item(group_bazaar, bot):
         else:
             meta = metaIndexed[Item.metatype][Item.metaid]
             sizex, sizey = map(int, meta['size'].split("x"))
-            item_price = sizex * sizey * (meta['tier'] + 1) * RARITY_ITEM.index(Item.rarity) // 2
+            item_price = sizex * sizey * (meta['tier'] + 1) * RARITY.index(Item.rarity) // 2
 
         try:
             # We do the financial transaction, atomically

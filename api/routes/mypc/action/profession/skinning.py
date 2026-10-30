@@ -6,6 +6,7 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
+from mongo.constants import CREATURE_RARITY
 from mongo.models.Corpse import CorpseDocument
 from mongo.models.Creature import CreatureDocument
 from mongo.models.Highscore import HighscoreDocument
@@ -21,7 +22,6 @@ from routes.mypc.action.profession._tools import (
     )
 from utils.pa import instance_tick
 from utils.redis import consume_pa, get_pa
-from variables import rarity_array
 
 #
 # Profession.skinning specifics
@@ -172,7 +172,7 @@ def skinning(creatureuuid, resourceuuid):
 
     for resource in resource_skinned:
         # We calculate the total quantity
-        varx = rarity_array['creature'].index(Corpse.rarity)   # between 0 and 5
+        varx = CREATURE_RARITY.index(Corpse.rarity)   # between 0 and 5
         vary = 0                                               # between 0 and 4
         varz = probabilistic_binary(g.Creature.stats.total.r)  # between 0 and 1
 

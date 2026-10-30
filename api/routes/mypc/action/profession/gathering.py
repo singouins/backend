@@ -6,6 +6,7 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
+from mongo.constants import RARITY
 from mongo.models.Highscore import HighscoreDocument
 from mongo.models.Profession import ProfessionDocument
 from mongo.models.Resource import ResourceDocument
@@ -20,7 +21,6 @@ from routes.mypc.action.profession._tools import (
     )
 from utils.pa import instance_tick
 from utils.redis import consume_pa, get_pa
-from variables import rarity_array
 
 #
 # Profession.gathering specifics
@@ -117,7 +117,7 @@ def gathering(creatureuuid, resourceuuid):
     Profession = ProfessionDocument.objects(_id=creatureuuid).get()
 
     # We calculate the total quantity
-    varx = 5 - rarity_array['item'].index(Resource.rarity)  # between 0 and 5
+    varx = 5 - RARITY.index(Resource.rarity)  # between 0 and 5
     vary = 0                                                # between 0 and 8
     varz = probabilistic_binary(g.Creature.stats.total.m)   # between 0 and 1
 

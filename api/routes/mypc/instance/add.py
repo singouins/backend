@@ -8,6 +8,7 @@ from loguru import logger
 from pydantic import BaseModel, ValidationError
 from random import choices, randint
 
+from mongo.constants import CREATURE_RARITY
 from mongo.models.Creature import (
     CreatureDocument,
     CreatureHP,
@@ -28,7 +29,7 @@ from utils.decorators import (
     )
 from utils.discord import discord_scopes
 from utils.redis import cput, qput
-from variables import metaIndexed, PS_AI_CREATURE, rarity_array, YQ_DISCORD
+from variables import metaIndexed, PS_AI_CREATURE, YQ_DISCORD
 
 
 class AddInstanceSchema(BaseModel):
@@ -130,7 +131,7 @@ def add(creatureuuid):
                 raceid = randint(11, 16)
                 gender = randint(0, 1)
                 rarity = choices(
-                    rarity_array['creature'],
+                    CREATURE_RARITY,
                     weights=(20, 30, 20, 10, 15, 5),
                     k=1,
                     )[0]

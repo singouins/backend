@@ -5,13 +5,13 @@ from flask import g, jsonify
 from flask_jwt_extended import jwt_required
 from loguru import logger
 
+from mongo.constants import RARITY
 from mongo.models.Satchel import SatchelDocument
 from mongo.utils import utcnow
 
 from routes._decorators import exists, belongs
 from utils.pa import instance_tick
 from utils.redis import get_pa, consume_pa
-from variables import rarity_array
 
 #
 # Profession.recycling specifics
@@ -49,8 +49,8 @@ def catalyze(creatureuuid, itemuuid):
     Satchel = SatchelDocument.objects(_id=g.Creature.id).get()
 
     # We check the next rarity level
-    rarity_index = rarity_array['item'].index(g.Item.rarity)
-    next_rarity = rarity_array['item'][rarity_index + 1]
+    rarity_index = RARITY.index(g.Item.rarity)
+    next_rarity = RARITY[rarity_index + 1]
 
     available_shards = getattr(Satchel.shard, next_rarity.lower())
     if available_shards < 10:
