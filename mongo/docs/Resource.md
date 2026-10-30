@@ -1,4 +1,4 @@
-# Collection: resource
+# Collection: resources
 
 
 ```text

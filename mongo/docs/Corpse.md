@@ -1,4 +1,4 @@
-# Collection: corpse
+# Collection: corpses
 
 
 ```text

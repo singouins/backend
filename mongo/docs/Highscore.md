@@ -1,4 +1,4 @@
-# Collection: highscore
+# Collection: highscores
 
 
 ```text

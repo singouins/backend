@@ -1,4 +1,4 @@
-# Collection: item
+# Collection: items
 
 
 ```text

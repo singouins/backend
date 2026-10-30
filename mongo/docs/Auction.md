@@ -1,4 +1,4 @@
-# Collection: auction
+# Collection: auctions
 
 
 ```text

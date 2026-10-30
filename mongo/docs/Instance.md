@@ -1,4 +1,4 @@
-# Collection: instance
+# Collection: instances
 
 
 ```text

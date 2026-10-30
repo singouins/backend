@@ -1,4 +1,4 @@
-# Collection: aggro
+# Collection: aggros
 
 
 ```text

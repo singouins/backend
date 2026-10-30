@@ -1,4 +1,4 @@
-# Collection: profession
+# Collection: professions
 
 
 ```text

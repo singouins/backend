@@ -1,4 +1,4 @@
-# Collection: cosmetic
+# Collection: cosmetics
 
 
 ```text

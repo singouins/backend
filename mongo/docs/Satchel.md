@@ -1,4 +1,4 @@
-# Collection: satchel
+# Collection: satchels
 
 
 ```text

@@ -1,4 +1,4 @@
-# Collection: event
+# Collection: events
 
 
 ```text

@@ -1,4 +1,4 @@
-# Collection: user
+# Collection: users
 
 
 ```text
