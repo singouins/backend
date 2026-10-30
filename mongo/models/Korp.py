@@ -34,8 +34,8 @@ class KorpDocument(Document):
     """
     _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     created = DateTimeField(default=utcnow)
-    leader = UUIDField(required=True)
-    name = StringField(binary=False, required=True)
+    leader = UUIDField(binary=False, required=True)
+    name = StringField(required=True)
     updated = DateTimeField(default=utcnow)
 
     meta = {
