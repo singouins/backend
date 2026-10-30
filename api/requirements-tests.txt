@@ -3,5 +3,8 @@
 pytest==9.1.1
 # In-memory Redis for tests/test_00_pa.py (get_pa/consume_pa without a server).
 fakeredis==2.40.0
+# Lua for fakeredis (EVAL/EVALSHA of utils.redis.try_consume_pa/refund_pa) and
+# the Lua 5.1 parity test of tests/test_00_pa_atomic.py.
+lupa==2.8
 # In-memory Mongo for the tests that run real Mongo updates (Item lock, corpses, mixology).
 mongomock==4.3.0

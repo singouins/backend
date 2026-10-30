@@ -203,6 +203,180 @@ def consume_pa(
             r.set(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red", 'None', ex=new_ttl)
 
 
+def _pa_keys(creatureuuid: str) -> dict:
+    """ The Redis keys of a Creature's PA pools, by colour. """
+    return {
+        "blue": f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue",
+        "red": f"{env_vars['API_ENV']}:pas:{creatureuuid}:red",
+    }
+
+
+# Runs inside Redis (Lua 5.1, numbers are doubles): read, split, check and
+# spend are one atomic step. It duplicates utils.pa for the arithmetic it
+# needs: pa_from_ttl() (Python round(): half to even), pa_cost_split()
+# (designer ruling Q104) and ttl_after_spend(). Keep them in sync:
+# tests/test_00_pa_atomic.py checks the parity on a grid of pools and costs.
+# KEYS: blue pool, red pool
+# ARGV: red cost, blue cost, red duration, blue duration, red max, blue max
+# Returns 1 when spent (or nothing to spend), 0 when unaffordable (nothing spent)
+TRY_CONSUME_PA_LUA = """
+local function available(ttl, pa_max, duration)
+    -- utils.pa.pa_from_ttl(): a negative TTL (-2 absent, -1 no expiry) is a full pool
+    local units = pa_max * duration - math.max(ttl, 0)
+    local pa = math.floor(units / duration)
+    local rest = units - pa * duration
+    -- Python round() rounds half to even
+    if 2 * rest > duration or (2 * rest == duration and pa % 2 == 1) then
+        pa = pa + 1
+    end
+    return pa
+end
+
+local function spend(key, ttl, spent, duration)
+    if spent <= 0 then
+        return
+    end
+    -- utils.pa.ttl_after_spend()
+    local new_ttl = math.max(ttl, 0) + spent * duration
+    if ttl > 0 then
+        -- Key still exists (PA count < PA max)
+        redis.call('EXPIRE', key, new_ttl)
+    else
+        -- Key does not exist anymore (PA count = PA max)
+        redis.call('SET', key, 'None', 'EX', new_ttl)
+    end
+end
+
+local red_cost = tonumber(ARGV[1])
+local blue_cost = tonumber(ARGV[2])
+local red_duration = tonumber(ARGV[3])
+local blue_duration = tonumber(ARGV[4])
+local blue_ttl = redis.call('TTL', KEYS[1])
+local red_ttl = redis.call('TTL', KEYS[2])
+local blue_available = available(blue_ttl, tonumber(ARGV[6]), blue_duration)
+local red_available = available(red_ttl, tonumber(ARGV[5]), red_duration)
+
+-- Designer ruling Q104, utils.pa.pa_cost_split(): blue is spent first,
+-- red covers the blue shortfall on top of the red cost
+local blue_spent = math.min(blue_cost, math.max(blue_available, 0))
+local red_spent = red_cost + blue_cost - blue_spent
+if math.max(red_available, 0) < red_spent then
+    return 0
+end
+
+spend(KEYS[1], blue_ttl, blue_spent, blue_duration)
+spend(KEYS[2], red_ttl, red_spent, red_duration)
+return 1
+"""
+
+# KEYS: blue pool, red pool
+# ARGV: red refund, blue refund, red duration, blue duration
+REFUND_PA_LUA = """
+local function refund(key, amount, duration)
+    if amount <= 0 then
+        return
+    end
+    local ttl = redis.call('TTL', key)
+    -- No TTL (-2 absent, -1 no expiry): the pool is full, nothing to give back
+    if ttl <= 0 then
+        return
+    end
+    local new_ttl = ttl - amount * duration
+    if new_ttl > 0 then
+        redis.call('EXPIRE', key, new_ttl)
+    else
+        -- Back to full: an absent key is a full pool
+        redis.call('DEL', key)
+    end
+end
+
+refund(KEYS[1], tonumber(ARGV[2]), tonumber(ARGV[4]))
+refund(KEYS[2], tonumber(ARGV[1]), tonumber(ARGV[3]))
+return 0
+"""
+
+
+def try_consume_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> bool:
+    """
+    Checks and consumes the PA of an action in one atomic step (issue #498).
+
+    The pools are read, the cost is split with designer ruling Q104 (red PA
+    cover what the blue pool lacks, see utils.pa.pa_cost_split()) and spent
+    only when affordable. Two concurrent calls on one Creature cannot both
+    spend the same PA.
+
+    Atomicity: one Lua script (TRY_CONSUME_PA_LUA), run by Redis as a single
+    command (EVALSHA, loaded on first use). Q104 is duplicated in Lua.
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA cost of the action (default is 0).
+    :param bluepa: The blue PA cost of the action (default is 0),
+                   red PA cover what the blue pool lacks.
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, Redis is not touched and True is returned.
+
+    :return: True when the PA were spent (or nothing to spend), False when
+             the action is not affordable: nothing is spent then.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to consume')
+        return True
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    consumed = r.register_script(TRY_CONSUME_PA_LUA)(
+        keys=[keys['blue'], keys['red']],
+        args=[redpa, bluepa, durations['red'], durations['blue'], RED_PA_MAX, BLUE_PA_MAX],
+        ) == 1
+    if not consumed:
+        logger.trace(f'[Creature.id:{creatureuuid}] PA(red:{redpa}, blue:{bluepa}) unaffordable')
+    return consumed
+
+
+def refund_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> None:
+    """
+    Gives back PA spent by try_consume_pa() (issue #498), atomically.
+
+    For a refusal detected after the PA were reserved (e.g. the corpse was
+    taken meanwhile). A failed roll keeps its cost: refused is not failed.
+    Each pool TTL is lowered by the PA refunded times their duration; a pool
+    back to full has its key deleted. A full pool (no key) stays full.
+
+    The amounts are per pool, as spent: when red PA covered a blue shortfall
+    (Q104), the covered part is refunded as red.
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA to give back (default is 0).
+    :param bluepa: The blue PA to give back (default is 0).
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, nothing is refunded and Redis is not touched.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to refund')
+        return
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    r.register_script(REFUND_PA_LUA)(
+        keys=[keys['blue'], keys['red']],
+        args=[redpa, bluepa, durations['red'], durations['blue']],
+        )
+
+
 # Every Redis key family a Creature can own while inside an Instance.
 # Placeholders: {env} (API_ENV), {instance} (Instance uuid), {creature} (Creature uuid).
 # The bearer segment is matched exactly (never *{creature}*): ids are uuids,
