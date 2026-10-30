@@ -99,7 +99,7 @@ class CreatureSlots(EmbeddedDocument):
 
 class CreatureStatsType(EmbeddedDocument):
     """
-    Define the embedded document for: Creature.stats
+    Define the embedded document for: Creature.stats.{race,spec,total}
 
     Fields:
     - b     (IntField)
@@ -132,6 +132,14 @@ class CreatureHP(EmbeddedDocument):
 
 
 class CreatureStats(EmbeddedDocument):
+    """
+    Define the embedded document for: Creature.stats
+
+    Fields:
+    - race  (EmbeddedDocumentField)
+    - spec  (EmbeddedDocumentField)
+    - total (EmbeddedDocumentField)
+    """
     race = EmbeddedDocumentField(CreatureStatsType, required=True)
     spec = EmbeddedDocumentField(CreatureStatsType, required=True)
     total = EmbeddedDocumentField(CreatureStatsType, required=True)

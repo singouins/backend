@@ -8,5 +8,6 @@
     "name": "PLOP",
     "type": 3,
     "action": "Human Readable TEXT",
-    "harmful": false
+    "harmful": false,
+    "extra": null
 }

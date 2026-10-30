@@ -15,3 +15,7 @@
 ├── trigger (UUIDField)
 └── type (IntField)
 ```
+
+type:
+- < 10: Fight Actions (reserved for Resolver)
+- 10++: Generic Actions
