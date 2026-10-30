@@ -1,4 +1,4 @@
-# Collection: squad
+# Collection: resource
 
 
 .
@@ -11,5 +11,4 @@
 ├── updated (DateTimeField)
 ├── visible (BooleanField)
 ├── x (IntField)
-├── y (IntField)
-└── updated (DateTimeField)
+└── y (IntField)

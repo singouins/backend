@@ -1,4 +1,4 @@
-# Collection: squad
+# Collection: profession
 
 
 .

@@ -38,11 +38,11 @@
 │   │   ├── obtained (IntField)
 │   │   ├── recycled (IntField)
 │   │   └── sold (IntField)
-│   ├── skin
-│   │   ├── bought (IntField)
-│   │   ├── obtained (IntField)
-│   │   ├── recycled (IntField)
-│   │   └── sold (IntField)
+│   └── skin
+│       ├── bought (IntField)
+│       ├── obtained (IntField)
+│       ├── recycled (IntField)
+│       └── sold (IntField)
 ├── profession
 │   ├── gathering (IntField)
 │   ├── mining (IntField)

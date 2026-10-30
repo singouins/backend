@@ -12,4 +12,4 @@
 ├── name (StringField)
 ├── src (UUIDField)
 ├── trigger (UUIDField)
-└── type (StringField)
+└── type (IntField)

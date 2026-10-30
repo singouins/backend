@@ -6,8 +6,9 @@
 ├── created (DateTimeField)
 ├── item
 │   ├── id (UUIDField)
-│   ├── metaid (UUIDField)
+│   ├── metaid (IntField)
 │   ├── metatype (StringField)
+│   ├── name (StringField)
 │   └── rarity (StringField)
 ├── price (IntField)
 ├── seller

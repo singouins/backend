@@ -1,4 +1,4 @@
-# Collection: creature
+# Collection: satchel
 
 
 .
