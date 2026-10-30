@@ -27,6 +27,7 @@ sys.path.append(LOCAL_PATH)
 REPO_PATH = os.path.join(LOCAL_PATH, os.pardir)
 CORPSE_MODEL = os.path.join(REPO_PATH, 'mongo', 'models', 'Corpse.py')
 MONGO_UTILS = os.path.join(REPO_PATH, 'mongo', 'utils.py')
+MONGO_CONSTANTS = os.path.join(REPO_PATH, 'mongo', 'constants.py')
 MOCK_ALIAS = 'test-corpse-skinning'
 SKINNING_ROUTE = os.path.join(LOCAL_PATH, 'routes', 'mypc', 'action', 'profession', 'skinning.py')
 
@@ -96,11 +97,12 @@ def world(mongo, monkeypatch):
     events = []
     creatures = {}
 
-    # Corpse.py imports mongo.utils: give it the real file under a stub mongo
+    # Corpse.py imports mongo.utils/constants: give it the real files under a stub mongo
     # package, so mongo/__init__.py (and its connect()) never runs
     package = _module('mongo', monkeypatch)
     package.__path__ = []
     monkeypatch.setitem(sys.modules, 'mongo.utils', _load('mongo.utils', MONGO_UTILS))
+    monkeypatch.setitem(sys.modules, 'mongo.constants', _load('mongo.constants', MONGO_CONSTANTS))
     corpse_model = _load('test_corpse_skinning_model', CORPSE_MODEL)
     corpse_model.CorpseDocument._meta['db_alias'] = MOCK_ALIAS
     monkeypatch.setitem(sys.modules, 'mongo.models.Corpse', corpse_model)

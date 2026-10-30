@@ -25,6 +25,7 @@ sys.path.append(LOCAL_PATH)
 REPO_PATH = os.path.join(LOCAL_PATH, os.pardir)
 ITEM_MODEL = os.path.join(REPO_PATH, 'mongo', 'models', 'Item.py')
 MONGO_UTILS = os.path.join(REPO_PATH, 'mongo', 'utils.py')
+MONGO_CONSTANTS = os.path.join(REPO_PATH, 'mongo', 'constants.py')
 ITEM_LOCK = os.path.join(LOCAL_PATH, 'utils', 'item_lock.py')
 MOCK_ALIAS = 'test-item-lock'
 
@@ -57,13 +58,14 @@ def mongo():
 def lock(mongo, monkeypatch):
     """
     Loads utils/item_lock.py with the real Item model. Item.py imports
-    mongo.utils: the real file is given under a stub mongo package, so
+    mongo.utils/constants: the real files are given under a stub mongo package, so
     mongo/__init__.py (and its connect()) never runs.
     """
     package = types.ModuleType('mongo')
     package.__path__ = []
     monkeypatch.setitem(sys.modules, 'mongo', package)
     monkeypatch.setitem(sys.modules, 'mongo.utils', _load('mongo.utils', MONGO_UTILS))
+    monkeypatch.setitem(sys.modules, 'mongo.constants', _load('mongo.constants', MONGO_CONSTANTS))
     item_model = _load('test_item_lock_model', ITEM_MODEL)
     item_model.ItemDocument._meta['db_alias'] = MOCK_ALIAS
     monkeypatch.setitem(sys.modules, 'mongo.models.Item', item_model)
