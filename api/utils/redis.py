@@ -203,6 +203,139 @@ def consume_pa(
             r.set(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red", 'None', ex=new_ttl)
 
 
+def _pa_keys(creatureuuid: str) -> dict:
+    """ The Redis keys of a Creature's PA pools, by colour. """
+    return {
+        "blue": f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue",
+        "red": f"{env_vars['API_ENV']}:pas:{creatureuuid}:red",
+    }
+
+
+def try_consume_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> bool:
+    """
+    Checks and consumes the PA of an action in one atomic step (issue #498).
+
+    The pools are read, the cost is split with designer ruling Q104 (red PA
+    cover what the blue pool lacks, see utils.pa.pa_cost_split()) and spent
+    only when affordable. Two concurrent calls on one Creature cannot both
+    spend the same PA.
+
+    Atomicity: WATCH + MULTI/EXEC. The pools are read under WATCH, the spend
+    is queued in MULTI. When another client changes a pool before EXEC,
+    redis-py raises WatchError and reruns the whole read/split/spend on fresh
+    values. Q104 stays in Python (pa_cost_split()).
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA cost of the action (default is 0).
+    :param bluepa: The blue PA cost of the action (default is 0),
+                   red PA cover what the blue pool lacks.
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, Redis is not touched and True is returned.
+
+    :return: True when the PA were spent (or nothing to spend), False when
+             the action is not affordable: nothing is spent then.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to consume')
+        return True
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    pa_max = {"blue": BLUE_PA_MAX, "red": RED_PA_MAX}
+
+    def reserve(pipe) -> bool:
+        # Under WATCH the pipeline runs commands immediately: these are real reads
+        ttls = {colour: pipe.ttl(key) for colour, key in keys.items()}
+        available = {
+            colour: pa_from_ttl(ttls[colour], pa_max[colour], durations[colour])['pa']
+            for colour in keys
+        }
+        split = pa_cost_split(available['red'], available['blue'], redpa, bluepa)
+
+        # Queued from here, applied by EXEC only if no pool changed since the
+        # reads. A refusal goes through EXEC too: it is confirmed on unchanged pools
+        pipe.multi()
+        if split is None:
+            return False
+
+        for colour, key in keys.items():
+            if split[colour] > 0:
+                new_ttl = ttl_after_spend(ttls[colour], split[colour], durations[colour])
+                if ttls[colour] > 0:
+                    # Key still exists (PA count < PA max)
+                    pipe.expire(key, new_ttl)
+                else:
+                    # Key does not exist anymore (PA count = PA max)
+                    pipe.set(key, 'None', ex=new_ttl)
+        return True
+
+    # Reruns until EXEC applies: no retry limit, a conflict needs another
+    # write on this Creature's pools in the few ms between WATCH and EXEC
+    consumed = r.transaction(reserve, keys['blue'], keys['red'], value_from_callable=True)
+    if not consumed:
+        logger.trace(f'[Creature.id:{creatureuuid}] PA(red:{redpa}, blue:{bluepa}) unaffordable')
+    return consumed
+
+
+def refund_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> None:
+    """
+    Gives back PA spent by try_consume_pa() (issue #498), atomically.
+
+    For a refusal detected after the PA were reserved (e.g. the corpse was
+    taken meanwhile). A failed roll keeps its cost: refused is not failed.
+    Each pool TTL is lowered by the PA refunded times their duration; a pool
+    back to full has its key deleted. A full pool (no key) stays full.
+
+    The amounts are per pool, as spent: when red PA covered a blue shortfall
+    (Q104), the covered part is refunded as red.
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA to give back (default is 0).
+    :param bluepa: The blue PA to give back (default is 0).
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, nothing is refunded and Redis is not touched.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to refund')
+        return
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    amounts = {"blue": bluepa, "red": redpa}
+
+    def refund(pipe) -> None:
+        # Under WATCH the pipeline runs commands immediately: these are real reads
+        ttls = {colour: pipe.ttl(key) for colour, key in keys.items()}
+
+        pipe.multi()
+        for colour, key in keys.items():
+            # No TTL (-2 absent, -1 no expiry): the pool is full, nothing to give back
+            if amounts[colour] <= 0 or ttls[colour] <= 0:
+                continue
+            new_ttl = ttls[colour] - amounts[colour] * durations[colour]
+            if new_ttl > 0:
+                pipe.expire(key, new_ttl)
+            else:
+                # Back to full: an absent key is a full pool
+                pipe.delete(key)
+
+    r.transaction(refund, keys['blue'], keys['red'])
+
+
 # Every Redis key family a Creature can own while inside an Instance.
 # Placeholders: {env} (API_ENV), {instance} (Instance uuid), {creature} (Creature uuid).
 # The bearer segment is matched exactly (never *{creature}*): ids are uuids,
