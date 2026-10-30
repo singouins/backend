@@ -35,11 +35,26 @@ ITEM_RARITY = [
 
 class ItemDocument(Document):
     """
-    Define the document for: Creature
+    Define the document for: Item
 
     Fields:
-    - _id       (UUIDField)
-
+    - _id         (UUIDField)
+    - ammo        (IntField)
+    - auctioned   (BooleanField)
+    - bearer      (UUIDField)
+    - bound       (BooleanField)
+    - bound_type  (StringField)
+    - created     (DateTimeField)
+    - locked      (DateTimeField)
+    - metaid      (IntField)
+    - metatype    (StringField)
+    - modded      (BooleanField)
+    - mods        (ListField)
+    - offsetx     (IntField)
+    - offsety     (IntField)
+    - rarity      (StringField)
+    - state       (IntField)
+    - updated     (DateTimeField)
     """
     _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     ammo = IntField(default=None)

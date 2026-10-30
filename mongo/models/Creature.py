@@ -76,15 +76,15 @@ class CreatureSlots(EmbeddedDocument):
     Define the embedded document for: Creature.slots
 
     Fields:
-    - feet      (UUIDField)
-    - hands     (UUIDField)
-    - head      (UUIDField)
-    - holster   (UUIDField)
-    - lefthand  (UUIDField)
-    - legs      (UUIDField)
-    - righthand (UUIDField)
-    - shoulders (UUIDField)
-    - torso     (UUIDField)
+    - feet      (EmbeddedDocumentField)
+    - hands     (EmbeddedDocumentField)
+    - head      (EmbeddedDocumentField)
+    - holster   (EmbeddedDocumentField)
+    - lefthand  (EmbeddedDocumentField)
+    - legs      (EmbeddedDocumentField)
+    - righthand (EmbeddedDocumentField)
+    - shoulders (EmbeddedDocumentField)
+    - torso     (EmbeddedDocumentField)
     """
     feet = EmbeddedDocumentField(CreatureSlot, default=None)
     hands = EmbeddedDocumentField(CreatureSlot, default=None)
@@ -158,7 +158,7 @@ class CreatureDocument(Document):
     - slots         (EmbeddedDocumentField)
     - squad         (EmbeddedDocumentField)
     - stats         (EmbeddedDocumentField)
-    - targeted_by   (UUIDField)
+    - targeted_by   (StringField)
     - updated       (DateTimeField)
     - x             (IntField)
     - xp            (IntField)

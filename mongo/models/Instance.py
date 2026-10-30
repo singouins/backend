@@ -18,7 +18,7 @@ from mongoengine.fields import (
 from mongo.utils import utcnow
 
 #
-# Collection: squad
+# Collection: instance
 #
 
 

@@ -40,8 +40,9 @@ class AuctionItem(EmbeddedDocument):
 
     Fields:
     - id        (UUIDField)
-    - metaid    (UUIDField)
+    - metaid    (IntField)
     - metatype  (StringField)
+    - name      (StringField)
     - rarity    (StringField)
     """
     id = UUIDField(binary=False, default=None)
@@ -70,9 +71,9 @@ class AuctionDocument(Document):
     Fields:
     - _id       (UUIDField)
     - created   (DateTimeField)
-    - item      (UUIDField)
+    - item      (EmbeddedDocumentField)
     - price     (IntField)
-    - seller    (UUIDField)
+    - seller    (EmbeddedDocumentField)
     - updated   (DateTimeField)
     """
     _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)

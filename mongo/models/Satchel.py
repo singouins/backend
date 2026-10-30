@@ -44,7 +44,7 @@ class SatchelResource(EmbeddedDocument):
 
 class SatchelShard(EmbeddedDocument):
     """
-    Define the embedded document for: Satchel.resource
+    Define the embedded document for: Satchel.shard
 
     Fields:
     - broken    (IntField)
@@ -64,7 +64,7 @@ class SatchelShard(EmbeddedDocument):
 
 class SatchelAmmo(EmbeddedDocument):
     """
-    Define the embedded document for: Satchel.slots
+    Define the embedded document for: Satchel.ammo
 
     Fields:
     - arrow     (IntField)
