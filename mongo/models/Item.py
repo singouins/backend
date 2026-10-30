@@ -28,6 +28,13 @@ ITEM_RARITY = [
     'Legendary',
     ]
 
+ITEM_BIND = [
+    'BoA',  # Bind on Account
+    'BoE',  # Bind on Equip
+    'BoP',  # Bind on Pick Up
+    'BoU',  # Bind on Use
+    ]
+
 #
 # Collection: item
 #
@@ -61,7 +68,7 @@ class ItemDocument(Document):
     auctioned = BooleanField(required=True, default=False)
     bearer = UUIDField(required=True, binary=False)
     bound = BooleanField(required=True, default=True)
-    bound_type = StringField(required=True, default='BoP')
+    bound_type = StringField(required=True, choices=ITEM_BIND, default='BoP')
     created = DateTimeField(default=utcnow)
     # Set while an equip or a recycling holds the Item (api/utils/item_lock.py)
     locked = DateTimeField(default=None)
