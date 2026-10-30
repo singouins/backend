@@ -5,11 +5,6 @@ import urllib.parse
 
 from mongoengine import connect
 
-from mongo._initialize import (
-    initialize_mongodb_map,
-    initialize_mongodb_meta,
-    )
-
 MONGO_BASE = os.environ.get("MONGO_BASE", 'singouins')
 MONGO_HOST = os.environ.get("MONGO_HOST", '127.0.0.1')
 MONGO_PASS = os.environ.get("MONGO_PASS")
@@ -28,6 +23,4 @@ MONGO_URI = 'mongodb://%s:%s@%s/%s?authSource=admin' % (
 
 connect(host=MONGO_URI, uuidRepresentation='standard')
 
-# Load all Meta in DB
-initialize_mongodb_map()
-initialize_mongodb_meta()
+# Maps and metas are loaded by `python3 -m mongo.init`, not on import

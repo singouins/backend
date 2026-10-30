@@ -1,7 +1,11 @@
 # Collections: _meta*
 
 DynamicDocuments: only _id is declared, the other fields come from
-the JSON files loaded at init (mongo/_initialize.py).
+the JSON files loaded by `python3 -m mongo.init` (mongo/init.py).
+
+The services don't load them: run it before starting them (a Kubernetes
+Job), and again whenever mongo/data changes. Every map/meta is replaced
+by its file version, so running it twice is harmless.
 
 
 ## _metaarmors (mongo/data/metas/armors.json)

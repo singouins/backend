@@ -100,6 +100,8 @@ jobs:
           MONGO_USER: ${{ vars.MONGO_USER || 'singouins' }}
           MONGO_PASS: ${{ secrets.MONGO_PASS || 'ci-throwaway-pass' }}
       run: |
+        echo "--- Loading maps and metas (a Kubernetes Job in production)"
+        python3 -m mongo.init
         echo "--- Starting PyTest"
         pytest mongo
 
@@ -210,6 +212,12 @@ jobs:
       run: |
         echo "--- Moving mongo lib where it belongs"
         cp -a mongo ${{ matrix.python-app }}/
+        # The apps don't load maps/metas themselves (a Kubernetes Job does in
+        # production); ws doesn't use Mongo, nor has mongoengine installed
+        if [ "${{ matrix.python-app }}" != "ws" ]; then
+          echo "--- Loading maps and metas"
+          python3 -m mongo.init
+        fi
         # discord's tests call the bot commands in-process (Discord is mocked),
         # so there's no app to start - and main.py would try to log into Discord
         if [ "${{ matrix.python-app }}" != "discord" ]; then

@@ -681,11 +681,15 @@ def test_instance_left_keeps_its_corpses(leave):
 def _load_api_variables(monkeypatch):
     """
     Executes the real api/variables.py under a private name. Its only Mongo
-    use is the metas, stubbed empty; nothing is left in sys.modules.
+    use is the metas, stubbed with one each (none would stop it at import);
+    nothing is left in sys.modules.
     """
+    stub = types.SimpleNamespace(
+        to_mongo=lambda: types.SimpleNamespace(to_dict=lambda: {'_id': 1}),
+        )
     meta = types.ModuleType('mongo.models.Meta')
     for name in ('MetaArmor', 'MetaRace', 'MetaWeapon'):
-        setattr(meta, name, types.SimpleNamespace(objects=lambda: []))
+        setattr(meta, name, types.SimpleNamespace(objects=lambda: [stub]))
     monkeypatch.setitem(sys.modules, 'mongo.models.Meta', meta)
     monkeypatch.setenv('SEP_SECRET_KEY', 'unit-test-secret')
 

@@ -82,6 +82,10 @@ metaNames = {
     'weapon': [doc.to_mongo().to_dict() for doc in MetaWeapon.objects()],
     'race': [doc.to_mongo().to_dict() for doc in MetaRace.objects()]
 }
+# Loaded by `python3 -m mongo.init` (a Kubernetes Job), not by this service:
+# fail now rather than run with no metas, the Pod restarts until they're there
+if not all(metaNames.values()):
+    raise RuntimeError('MongoDB metas missing: run `python3 -m mongo.init` first')
 
 metaIndexed = {
     'armor': {armor["_id"]: armor for armor in metaNames['armor']},
