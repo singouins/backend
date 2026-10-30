@@ -68,7 +68,7 @@ class ItemDocument(Document):
     metatype = StringField(required=True)
     metaid = IntField(required=True)
     modded = BooleanField(required=True, default=False)
-    mods = ListField(default=[])
+    mods = ListField(default=list)
     offsetx = IntField(default=None)
     offsety = IntField(default=None)
     rarity = StringField(required=True, choices=ITEM_RARITY, default='Common')
