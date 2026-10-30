@@ -17,23 +17,8 @@ from mongoengine.fields import (
     UUIDField,
 )
 
+from mongo.constants import ITEM_BIND, RARITY
 from mongo.utils import utcnow
-
-ITEM_RARITY = [
-    'Broken',
-    'Common',
-    'Uncommon',
-    'Rare',
-    'Epic',
-    'Legendary',
-    ]
-
-ITEM_BIND = [
-    'BoA',  # Bind on Account
-    'BoE',  # Bind on Equip
-    'BoP',  # Bind on Pick Up
-    'BoU',  # Bind on Use
-    ]
 
 #
 # Collection: item
@@ -78,7 +63,7 @@ class ItemDocument(Document):
     mods = ListField(default=list)
     offsetx = IntField(default=None)
     offsety = IntField(default=None)
-    rarity = StringField(required=True, choices=ITEM_RARITY, default='Common')
+    rarity = StringField(required=True, choices=RARITY, default='Common')
     state = IntField(required=True, default=100)
     updated = DateTimeField(default=utcnow)
 

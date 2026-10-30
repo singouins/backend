@@ -17,16 +17,8 @@ from mongoengine.fields import (
     UUIDField,
 )
 
+from mongo.constants import CREATURE_RARITY
 from mongo.utils import utcnow
-
-CREATURE_RARITY = [
-    'Small',
-    'Medium',
-    'Big',
-    'Unique',
-    'Boss',
-    'God',
-    ]
 
 #
 # Collection: corpse
