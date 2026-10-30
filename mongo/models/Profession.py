@@ -28,6 +28,7 @@ class ProfessionDocument(Document):
     Fields:
     - _id       (UUIDField)
     - gathering (IntField)
+    - mining    (IntField)
     - recycling (IntField)
     - skinning  (IntField)
     - tanning   (IntField)
@@ -36,6 +37,7 @@ class ProfessionDocument(Document):
     """
     _id = UUIDField(binary=False, primary_key=True, default=uuid.uuid4)
     gathering = IntField(required=True, default=0)
+    mining = IntField(required=True, default=0)
     recycling = IntField(required=True, default=0)
     skinning = IntField(required=True, default=0)
     tanning = IntField(required=True, default=0)
