@@ -1,6 +1,7 @@
 # Collection: event
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── action (StringField)
@@ -13,3 +14,4 @@
 ├── src (UUIDField)
 ├── trigger (UUIDField)
 └── type (IntField)
+```

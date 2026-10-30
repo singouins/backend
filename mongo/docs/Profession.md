@@ -1,6 +1,7 @@
 # Collection: profession
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── gathering (IntField)
@@ -10,3 +11,4 @@
 ├── tanning (IntField)
 ├── tracking (IntField)
 └── updated (DateTimeField)
+```

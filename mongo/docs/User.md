@@ -1,6 +1,7 @@
 # Collection: user
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── active (BooleanField)
@@ -11,3 +12,4 @@
 ├── hash (StringField)
 ├── name (StringField)
 └── updated (DateTimeField)
+```

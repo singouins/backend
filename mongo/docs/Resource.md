@@ -1,6 +1,7 @@
 # Collection: resource
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── created (DateTimeField)
@@ -12,3 +13,4 @@
 ├── visible (BooleanField)
 ├── x (IntField)
 └── y (IntField)
+```

@@ -1,6 +1,7 @@
 # Collection: instance
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── created (DateTimeField)
@@ -12,3 +13,4 @@
 ├── public (BooleanField)
 ├── tick (IntField)
 └── updated (DateTimeField)
+```

@@ -1,6 +1,7 @@
 # Collection: skills
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── skills []
@@ -8,3 +9,4 @@
 │   └── level (IntField)
 ├── loadout [] (StringField)
 └── updated (DateTimeField)
+```

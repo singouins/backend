@@ -1,6 +1,7 @@
 # Collection: highscore
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── created (DateTimeField)
@@ -51,3 +52,4 @@
 │   ├── tanning (IntField)
 │   └── tracking (IntField)
 └── updated (DateTimeField)
+```

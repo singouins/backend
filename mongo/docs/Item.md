@@ -1,6 +1,7 @@
 # Collection: item
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── ammo (IntField)
@@ -19,3 +20,4 @@
 ├── rarity (StringField)
 ├── state (IntField)
 └── updated (DateTimeField)
+```

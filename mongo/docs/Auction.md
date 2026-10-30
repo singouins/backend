@@ -1,6 +1,7 @@
 # Collection: auction
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── created (DateTimeField)
@@ -15,3 +16,4 @@
 │   ├── id (UUIDField)
 │   └── name (StringField)
 └── updated (DateTimeField)
+```

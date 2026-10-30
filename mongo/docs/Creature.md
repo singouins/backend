@@ -1,6 +1,7 @@
 # Collection: creature
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── account (UUIDField)
@@ -87,3 +88,4 @@
 ├── x (IntField)
 ├── xp (IntField)
 └── y (IntField)
+```

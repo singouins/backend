@@ -1,6 +1,7 @@
 # Collection: cosmetic
 
 
+```text
 .
 ├── _id (UUIDField)
 ├── bearer (UUIDField)
@@ -15,3 +16,4 @@
 ├── rarity (StringField)
 ├── state (IntField)
 └── updated (DateTimeField)
+```
