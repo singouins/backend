@@ -73,6 +73,8 @@ def variables(monkeypatch):
     stub.RESOLVER_URL = RESOLVER_URL
     stub.RESOLVER_INTERNAL_TOKEN = TOKEN
     stub.metaIndexed = META_INDEXED
+    # equip.py / unequip.py publish on it (checked in test_00_equip_params.py)
+    stub.PS_BROADCAST = 'ws-broadcast-pytest'
     monkeypatch.setitem(sys.modules, 'variables', stub)
     return stub
 

@@ -16,6 +16,7 @@ from utils.pa import instance_tick
 from utils.redis import r, get_pa
 from utils.resolver import notify_gear_changed
 from mongo.utils import utcnow
+from variables import PS_BROADCAST
 
 #
 # Inventory.unequip specifics
@@ -83,7 +84,7 @@ def unequip(creatureuuid, type, slotname, itemuuid):
     # We send in pubsub channel for WS
     try:
         r.publish(
-            'ws-broadcast',
+            PS_BROADCAST,
             jsonify({
                 "ciphered": False,
                 "payload": g.Creature.to_mongo(),

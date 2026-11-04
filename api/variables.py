@@ -40,7 +40,9 @@ if not SEP_INTERNAL_TOKEN:
 YQ_BROADCAST = os.environ.get("YQ_BROADCAST", f"{env_vars['API_ENV']}:yarqueue:broadcast")
 YQ_DISCORD   = os.environ.get("YQ_DISCORD", f"{env_vars['API_ENV']}:yarqueue:discord")
 # PubSub variables
-PS_BROADCAST = os.environ.get("PS_BROADCAST", 'ws-broadcast')
+# Same rule as ws/main.py, which subscribes to ws-broadcast-<env>
+# str() so an unset API_ENV gives 'ws-broadcast-none' instead of an import crash
+PS_BROADCAST = os.environ.get("PS_BROADCAST", f"ws-broadcast-{str(env_vars['API_ENV']).lower()}")
 # The AI listens on ai-creature-<env> (ai/variables.py CREATURE_PATH), which
 # has no env override: none here either, so both sides follow the same rule.
 # str() so an unset API_ENV gives 'ai-creature-none' instead of an import crash

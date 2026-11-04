@@ -41,6 +41,8 @@ MISSING_SLOT_METAID = 21
 SHIELD_2X3_METAID = 22
 SHIELD_2X4_METAID = 23
 WEAPON_2X3_METAID = 3
+# Any name but the old hardcoded 'ws-broadcast': the routes must publish on PS_BROADCAST
+PS_BROADCAST = 'ws-broadcast-pytest'
 META_INDEXED = {
     'armor': {
         ARMOR_METAID: {'_id': ARMOR_METAID, 'size': '2x2', 'slot': 'Head', **NO_MINS},
@@ -116,10 +118,11 @@ def modules(monkeypatch):
     monkeypatch.setitem(sys.modules, 'utils.item_lock', item_lock)
 
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)
-    # equip.py reads only metaIndexed from variables: an explicit stub, so the
+    # The routes read metaIndexed and PS_BROADCAST from variables: an explicit stub, so the
     # test does not depend on conftest having imported tests/variables.py
     variables = types.ModuleType('variables')
     variables.metaIndexed = META_INDEXED
+    variables.PS_BROADCAST = PS_BROADCAST
     monkeypatch.setitem(sys.modules, 'variables', variables)
 
     equip = _load('test_equip_route', os.path.join(INVENTORY_ROUTES, 'equip.py'))
@@ -240,7 +243,7 @@ def test_equip_valid_weapon_reaches_the_normal_path(world):
     assert world.creature.slots.righthand.id == ITEM_ID
     assert world.events[0] == 'save'
     assert world.events[1][0] == 'consume_pa'
-    assert world.events[2] == ('publish', 'ws-broadcast')
+    assert world.events[2] == ('publish', PS_BROADCAST)
 
 
 def test_equip_valid_armor_reaches_the_generic_slot(world):
@@ -425,4 +428,4 @@ def test_unequip_valid_slotname_reaches_the_normal_path(world):
     assert code == 200
     assert body['success'] is True
     assert world.creature.slots.head is None
-    assert world.events == ['save', ('publish', 'ws-broadcast')]
+    assert world.events == ['save', ('publish', PS_BROADCAST)]
