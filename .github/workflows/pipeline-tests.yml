@@ -51,7 +51,10 @@ jobs:
 
 
   mongo-pytest:
-    runs-on: ubuntu-24.04
+    # mongo 8.0+ refuses to start on kernels 6.19 to 7.0.13 (SERVER-125742);
+    # ubuntu-24.04 runners are on 7.0.0-azure, 22.04 still on 6.8: back to
+    # ubuntu-24.04 once its kernel reaches 7.0.14+
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
 
     needs:
@@ -115,7 +118,10 @@ jobs:
 
 
   app-pytest:
-    runs-on: ubuntu-24.04
+    # mongo 8.0+ refuses to start on kernels 6.19 to 7.0.13 (SERVER-125742);
+    # ubuntu-24.04 runners are on 7.0.0-azure, 22.04 still on 6.8: back to
+    # ubuntu-24.04 once its kernel reaches 7.0.14+
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
 
     strategy:
