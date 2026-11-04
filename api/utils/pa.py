@@ -45,26 +45,6 @@ def pa_durations(tick: int) -> dict:
     }
 
 
-def pa_from_ttl(ttl: int, pa_max: int, duration: int) -> dict:
-    """
-    Converts the Redis TTL of a PA pool into the PA available right now.
-
-    :param ttl: The raw TTL returned by Redis (negative when the key is absent).
-    :param pa_max: The pool size (RED_PA_MAX or BLUE_PA_MAX).
-    :param duration: Seconds needed to regenerate one PA (see pa_durations()).
-
-    :return: {'pa': available PA, 'ttnpa': seconds to the next PA, 'ttl': the raw TTL}
-    """
-    # A negative TTL (-2 key absent, -1 no expiry) counts as nothing to wait for
-    remaining = max(ttl, 0)
-
-    return {
-        'pa': int(round((pa_max * duration - remaining) / duration)),
-        'ttnpa': remaining % duration,
-        'ttl': ttl,
-    }
-
-
 def ttl_after_spend(ttl: int, spent: int, duration: int) -> int:
     """
     New TTL of a PA pool after spending some PA.

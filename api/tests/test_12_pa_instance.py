@@ -22,11 +22,13 @@ RED_KEY  = f"{API_ENV}:pas:{CREATURE_ID}:red"
 BLUE_KEY = f"{API_ENV}:pas:{CREATURE_ID}:blue"
 
 # Simulated spent PA, set directly the way consume_pa() does (key = 'None', TTL = time
-# left until the pool is full again). TTLs are chosen away from .5 roundings:
-#   blue, 9000s left on an 8 * 7200 = 57600s pool: round((57600 - 9000) / 7200)
-#         = round(6.75) = 7 PA, next PA in 9000 % 7200 = 1800s
-#   red,  5000s left on a 16 * 3600 = 57600s pool: round((57600 - 5000) / 3600)
-#         = round(14.61) = 15 PA, next PA in 5000 % 3600 = 1400s
+# left until the pool is full again). PA are read by functions_pa pa_read: a PA only
+# counts once fully regenerated. TTLs are chosen away from exact multiples of the
+# duration, so a few seconds of drift never move the count:
+#   blue, 9000s left, duration 7200: 8 - ceil(9000 / 7200) = 6 PA,
+#         next PA in (9000 - 1) % 7200 + 1 = 1800s
+#   red,  5000s left, duration 3600: 16 - ceil(5000 / 3600) = 14 PA,
+#         next PA in (5000 - 1) % 3600 + 1 = 1400s
 BLUE_TTL = 9000
 RED_TTL  = 5000
 
@@ -60,9 +62,9 @@ def test_singouins_pa_instance_spent_pools(jwt_header):
 
     # A few seconds may elapse between the SET and the read: ttnpa only shrinks
     payload = response.json().get("payload")
-    assert payload['blue']['pa'] == 7
+    assert payload['blue']['pa'] == 6
     assert 1790 < payload['blue']['ttnpa'] <= 1800
-    assert payload['red']['pa'] == 15
+    assert payload['red']['pa'] == 14
     assert 1390 < payload['red']['ttnpa'] <= 1400
 
 
