@@ -23,6 +23,7 @@ sys.path.append(LOCAL_PATH)
 REPO_PATH = os.path.join(LOCAL_PATH, os.pardir)
 CREATURE_MODEL = os.path.join(REPO_PATH, 'mongo', 'models', 'Creature.py')
 INVENTORY_ROUTES = os.path.join(LOCAL_PATH, 'routes', 'mypc', 'inventory')
+PS_BROADCAST = 'ws-broadcast-test'
 
 CREATURE_ID = uuid.uuid4()
 ITEM_ID = uuid.uuid4()
@@ -116,10 +117,11 @@ def modules(monkeypatch):
     monkeypatch.setitem(sys.modules, 'utils.item_lock', item_lock)
 
     monkeypatch.setattr(flask_jwt_extended, 'jwt_required', lambda: _identity)
-    # equip.py reads only metaIndexed from variables: an explicit stub, so the
-    # test does not depend on conftest having imported tests/variables.py
+    # equip.py reads metaIndexed and env_vars from variables: an explicit stub,
+    # so the test does not depend on conftest having imported tests/variables.py
     variables = types.ModuleType('variables')
     variables.metaIndexed = META_INDEXED
+    variables.env_vars = {'PS_BROADCAST': PS_BROADCAST}
     monkeypatch.setitem(sys.modules, 'variables', variables)
 
     equip = _load('test_equip_route', os.path.join(INVENTORY_ROUTES, 'equip.py'))
@@ -240,7 +242,7 @@ def test_equip_valid_weapon_reaches_the_normal_path(world):
     assert world.creature.slots.righthand.id == ITEM_ID
     assert world.events[0] == 'save'
     assert world.events[1][0] == 'consume_pa'
-    assert world.events[2] == ('publish', 'ws-broadcast')
+    assert world.events[2] == ('publish', PS_BROADCAST)
 
 
 def test_equip_valid_armor_reaches_the_generic_slot(world):
@@ -425,4 +427,4 @@ def test_unequip_valid_slotname_reaches_the_normal_path(world):
     assert code == 200
     assert body['success'] is True
     assert world.creature.slots.head is None
-    assert world.events == ['save', ('publish', 'ws-broadcast')]
+    assert world.events == ['save', ('publish', PS_BROADCAST)]

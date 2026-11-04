@@ -14,6 +14,8 @@ env_vars = {
     "REDIS_HOST": os.environ.get("REDIS_HOST", '127.0.0.1'),
     "REDIS_PORT": int(os.environ.get("REDIS_PORT", 6379)),
     "REDIS_BASE": int(os.environ.get("REDIS_BASE", 0)),
+    # WebSocket variables (PubSub channel the ws service listens on)
+    "PS_BROADCAST": os.environ.get("PS_BROADCAST", f'ws-broadcast-{str(os.environ.get("API_ENV")).lower()}'),  # noqa: E501
 }
 # Print the environment variables for debugging
 _SENSITIVE_VARS = set()
@@ -37,10 +39,8 @@ if not SEP_INTERNAL_TOKEN:
     logger.warning('SEP_INTERNAL_TOKEN unset: /internal/* routes are disabled')
 
 # YarQueue variables
-YQ_BROADCAST = os.environ.get("YQ_BROADCAST", f"{env_vars['API_ENV']}:yarqueue:broadcast")
 YQ_DISCORD   = os.environ.get("YQ_DISCORD", f"{env_vars['API_ENV']}:yarqueue:discord")
 # PubSub variables
-PS_BROADCAST = os.environ.get("PS_BROADCAST", 'ws-broadcast')
 # The AI listens on ai-creature-<env> (ai/variables.py CREATURE_PATH), which
 # has no env override: none here either, so both sides follow the same rule.
 # str() so an unset API_ENV gives 'ai-creature-none' instead of an import crash
