@@ -73,6 +73,8 @@ def variables(monkeypatch):
     stub.RESOLVER_URL = RESOLVER_URL
     stub.RESOLVER_INTERNAL_TOKEN = TOKEN
     stub.metaIndexed = META_INDEXED
+    # equip / unequip publish the ws broadcast on env_vars['PS_BROADCAST']
+    stub.env_vars = {'PS_BROADCAST': 'ws-broadcast-test'}
     monkeypatch.setitem(sys.modules, 'variables', stub)
     return stub
 
