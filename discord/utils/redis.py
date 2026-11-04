@@ -43,37 +43,23 @@ else:
 # got dropped.
 
 
-def _pa_from_ttl(ttl: int, pa_max: int, duration: int) -> dict:
-    """
-    Converts the Redis TTL of a PA pool into the PA available right now.
-    Same semantics as api/utils/pa.py's pa_from_ttl(), kept local on purpose.
-
-    :param ttl: The raw TTL returned by Redis (negative when the key is absent).
-    :param pa_max: The pool size.
-    :param duration: Seconds needed to regenerate one PA.
-
-    :return: {'pa': available PA, 'ttnpa': seconds to the next PA, 'ttl': the raw TTL}
-    """
-    # A negative TTL (-2 key absent, -1 no expiry) counts as nothing to wait for
-    remaining = max(ttl, 0)
-
-    return {
-        "pa": int(round((pa_max * duration - remaining) / duration)),
-        "ttnpa": remaining % duration,
-        "ttl": ttl,
-    }
-
-
 def get_pa(creatureuuid: str, *, tick: int) -> dict:
     """
     Retrieves the blue and red PA and their TTL for a Creature.
+
+    Reads both pools with FCALL_RO pa_read, from the Redis function library
+    functions_pa (Lordslair's, deployed with the databases chart; source of
+    truth: singouins/helm). The API, ai and the resolver read the same way:
+    a PA only counts once fully regenerated, pa = max - ceil(remaining / duration),
+    ttnpa is 1..duration while the pool regenerates, 0 when it is full.
 
     :param creatureuuid: The UUID of the creature.
     :param tick: The tick (seconds) of the Creature's Instance (InstanceDocument.tick).
                  Red regenerates 1 PA per tick, blue 1 PA per 2 ticks - same rule as
                  api/utils/pa.py. Outside an Instance there are no PA: do not call this.
 
-    :return: A dictionary with PA and TTL information for both blue and red.
+    :return: A dictionary with PA and TTL information for both blue and red,
+             {'pa', 'ttnpa', 'ttl'} each, ttl being the raw Redis TTL.
     """
     # Constants
     RED_PA_MAX = 16
@@ -81,14 +67,17 @@ def get_pa(creatureuuid: str, *, tick: int) -> dict:
     RED_PA_DURATION = tick
     BLUE_PA_DURATION = 2 * tick
 
-    ttls = {
-        "blue": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue"),
-        "red": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red"),
-    }
+    # KEYS: blue first; ARGV: red first
+    red_pa, red_ttnpa, red_ttl, blue_pa, blue_ttnpa, blue_ttl = r.fcall_ro(
+        'pa_read', 2,
+        f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue",
+        f"{env_vars['API_ENV']}:pas:{creatureuuid}:red",
+        RED_PA_DURATION, BLUE_PA_DURATION, RED_PA_MAX, BLUE_PA_MAX,
+        )
 
     return {
-        "blue": _pa_from_ttl(ttls['blue'], BLUE_PA_MAX, BLUE_PA_DURATION),
-        "red": _pa_from_ttl(ttls['red'], RED_PA_MAX, RED_PA_DURATION),
+        "blue": {"pa": blue_pa, "ttnpa": blue_ttnpa, "ttl": blue_ttl},
+        "red": {"pa": red_pa, "ttnpa": red_ttnpa, "ttl": red_ttl},
     }
 
 

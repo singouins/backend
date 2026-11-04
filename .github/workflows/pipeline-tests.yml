@@ -203,6 +203,13 @@ jobs:
           then pip install -r ${{ matrix.python-app }}/requirements-tests.txt; \
         fi
 
+    # The PA pools are read and written through the functions_pa Redis
+    # library: the databases chart loads it in production, the CI loads the
+    # test copy (pinned to singouins/helm, see api/tests/redis_functions.py)
+    - name: Load Redis functions 📚
+      run: |
+        python3 -c "import redis; redis.Redis(host='127.0.0.1').function_load(open('api/tests/fixtures/functions_pa.lua').read(), replace=True)"
+
     - name: Test with PyTest ⚙️
       env:
           LOGURU_LEVEL: ${{ vars.LOGURU_LEVEL || 'INFO' }}
