@@ -14,7 +14,7 @@ from utils.decorators import (
     check_squad_exists,
     )
 from utils.redis import cput, qput
-from variables import PS_BROADCAST, YQ_DISCORD
+from variables import YQ_DISCORD, env_vars
 
 
 # API: POST /mypc/<uuid:creatureuuid>/squad/<uuid:squaduuid>/accept
@@ -55,7 +55,7 @@ def squad_accept(creatureuuid, squaduuid):
 
     # Everything went well
     # Broadcast Channel
-    cput(PS_BROADCAST, {
+    cput(env_vars['PS_BROADCAST'], {
         "ciphered": False,
         "payload": g.Squad.to_json(json_options=JSON_OPTIONS),
         "route": 'mypc/{id1}/squad',

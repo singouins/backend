@@ -16,7 +16,7 @@ from utils.item_lock import lock_item, unlock_item
 from utils.pa import equip_cost, instance_tick, pa_shortfall_colour
 from utils.redis import r, get_pa, consume_pa
 from utils.resolver import notify_gear_changed
-from variables import metaIndexed
+from variables import env_vars, metaIndexed
 
 #
 # Inventory.equip specifics
@@ -305,7 +305,7 @@ def equip(creatureuuid, type, slotname, itemuuid):
     # We put the info in queue for ws
     try:
         r.publish(
-            'ws-broadcast',
+            env_vars['PS_BROADCAST'],
             jsonify({
                 "ciphered": False,
                 "payload": g.Creature.to_mongo(),

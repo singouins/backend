@@ -15,7 +15,7 @@ from utils.decorators import (
     check_korp_exists,
     )
 from utils.redis import cput, qput
-from variables import PS_BROADCAST, YQ_DISCORD
+from variables import YQ_DISCORD, env_vars
 
 #
 # Korp specifics
@@ -101,7 +101,7 @@ def korp_invite(creatureuuid, korpuuid, targetuuid):
 
     # Everything went well
     # Broadcast Channel
-    cput(PS_BROADCAST, {
+    cput(env_vars['PS_BROADCAST'], {
         "ciphered": False,
         "payload": g.Korp.to_json(json_options=JSON_OPTIONS),
         "route": 'mypc/{id1}/korp',
