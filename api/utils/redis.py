@@ -203,6 +203,106 @@ def consume_pa(
             r.set(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red", 'None', ex=new_ttl)
 
 
+def _pa_keys(creatureuuid: str) -> dict:
+    """ The Redis keys of a Creature's PA pools, by colour. """
+    return {
+        "blue": f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue",
+        "red": f"{env_vars['API_ENV']}:pas:{creatureuuid}:red",
+    }
+
+
+# The PA pools live in Redis, behind the `functions_pa` function library
+# (Lordslair's, deployed with the databases chart; source of truth:
+# singouins/helm, singouins-databases/files/redis/functions/functions_pa.lua).
+# Every function: KEYS = blue pool, red pool (blue first); in ARGV red comes first.
+# The library holds designer ruling Q104 (red PA cover the blue shortfall):
+# the API passes costs, durations and maxima, never a split.
+
+
+def try_consume_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> Optional[dict]:
+    """
+    Checks and consumes the PA of an action in one atomic step (issue #498).
+
+    The pools are read, the cost is split with designer ruling Q104 (red PA
+    cover what the blue pool lacks) and spent only when affordable. Two
+    concurrent calls on one Creature cannot both spend the same PA.
+
+    Atomicity: one Redis function call, FCALL pa_consume (library functions_pa).
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA cost of the action (default is 0).
+    :param bluepa: The blue PA cost of the action (default is 0),
+                   red PA cover what the blue pool lacks.
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, Redis is not touched and nothing is spent.
+
+    :return: The PA spent per pool, {'red': int, 'blue': int}, when the
+             action was paid (always truthy, even for a zero cost). The red
+             part includes the red PA that covered a blue shortfall, so
+             refund_pa(redpa=spent['red'], bluepa=spent['blue']) gives back
+             exactly what was taken. None when the action is not affordable:
+             nothing is spent then.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to consume')
+        return {'red': 0, 'blue': 0}
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    ok, red_spent, blue_spent, _, _ = r.fcall(
+        'pa_consume', 2, keys['blue'], keys['red'],
+        redpa, bluepa, durations['red'], durations['blue'], RED_PA_MAX, BLUE_PA_MAX,
+        )
+    if ok != 1:
+        logger.trace(f'[Creature.id:{creatureuuid}] PA(red:{redpa}, blue:{bluepa}) unaffordable')
+        return None
+    return {'red': red_spent, 'blue': blue_spent}
+
+
+def refund_pa(
+    creatureuuid: str,
+    redpa: int = 0,
+    bluepa: int = 0,
+    *,
+    tick: Optional[int],
+) -> None:
+    """
+    Gives back PA spent by try_consume_pa() (issue #498), atomically.
+
+    For a refusal detected after the PA were reserved (e.g. the corpse was
+    taken meanwhile). A failed roll keeps its cost: refused is not failed.
+    One Redis function call, FCALL pa_add (library functions_pa): each pool
+    gets its PA back, capped at its max; a full pool stays full.
+
+    The amounts are per pool, as spent: pass what try_consume_pa() returned,
+    so the red PA that covered a blue shortfall (Q104) are refunded as red.
+
+    :param creatureuuid: The UUID of the creature.
+    :param redpa: The red PA to give back (default is 0).
+    :param bluepa: The blue PA to give back (default is 0).
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.instance_tick().
+                 Mandatory: pass None explicitly when the Creature is not in an Instance,
+                 there are no pools then, nothing is refunded and Redis is not touched.
+    """
+    if tick is None:
+        logger.trace(f'[Creature.id:{creatureuuid}] not in an Instance: no PA to refund')
+        return
+
+    durations = pa_durations(tick)
+    keys = _pa_keys(creatureuuid)
+    r.fcall(
+        'pa_add', 2, keys['blue'], keys['red'],
+        redpa, bluepa, durations['red'], durations['blue'],
+        )
+
+
 # Every Redis key family a Creature can own while inside an Instance.
 # Placeholders: {env} (API_ENV), {instance} (Instance uuid), {creature} (Creature uuid).
 # The bearer segment is matched exactly (never *{creature}*): ids are uuids,
