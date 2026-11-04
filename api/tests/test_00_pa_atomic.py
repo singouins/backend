@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import hashlib
 import os
 import sys
 import threading
@@ -15,24 +16,30 @@ import redis
 LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
 sys.path.append(LOCAL_PATH)
 
-from utils.pa import (  # noqa: E402
-    BLUE_PA_MAX,
-    RED_PA_MAX,
-    pa_cost_split,
-    pa_durations,
-    pa_from_ttl,
-    ttl_after_spend,
-    )
+from utils.pa import pa_durations  # noqa: E402
 
 # Issue #498: try_consume_pa() checks and spends in one atomic step, refund_pa()
-# gives PA back. Unit tests against fakeredis, plus the concurrency test
-# against the real Redis of the CI when it is reachable.
+# gives PA back, both through the Redis function library functions_pa. Unit
+# tests against fakeredis, plus the concurrency test against the real Redis of
+# the CI when it is reachable. Both get the library loaded first (FUNCTION LOAD).
 TICK = 3600
 DURATIONS = pa_durations(TICK)
 ROUNDS = 25
 # Delay before each Redis command: widens the window between a read and a
 # write, so a non-atomic check-then-spend lets both racers through
 COMMAND_DELAY = 0.005
+
+# functions_pa is Lordslair's library, deployed with the databases chart. The
+# source of truth is singouins/helm (private): fixtures/functions_pa.lua is a
+# byte-identical copy of the file below at that commit, for the tests only.
+# To update: copy the file again from helm, then update these constants.
+FUNCTIONS_PA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 'fixtures', 'functions_pa.lua')
+FUNCTIONS_PA_HELM_PATH = 'singouins-databases/files/redis/functions/functions_pa.lua'
+FUNCTIONS_PA_HELM_COMMIT = '4809c81248f55c5ae14d6d7400228c2c274f9d47'
+# `git hash-object` of the file at that commit (the blob sha GitHub shows)
+FUNCTIONS_PA_HELM_BLOB = '5186b3afa751ccf98f0046cd87f77922eb574c82'
+FUNCTIONS_PA_VERSION = 3
 
 
 def _env(monkeypatch):
@@ -54,11 +61,30 @@ def _env(monkeypatch):
     return utils_redis
 
 
+def _functions_pa_code():
+    with open(FUNCTIONS_PA_FILE, encoding='utf8') as lua:
+        return lua.read()
+
+
+def _load_functions_pa(client):
+    """
+    FUNCTION LOAD the test copy of functions_pa. A server that already has the
+    library keeps it (no REPLACE): the version test then checks what it runs.
+    """
+    try:
+        client.function_load(_functions_pa_code())
+    except redis.exceptions.ResponseError as error:
+        if 'already exists' not in str(error):
+            raise
+
+
 @pytest.fixture
 def pa_redis(monkeypatch):
-    """ utils.redis on an in-memory fakeredis. """
+    """ utils.redis on an in-memory fakeredis, functions_pa loaded. """
     utils_redis = _env(monkeypatch)
-    monkeypatch.setattr(utils_redis, 'r', fakeredis.FakeStrictRedis(server=fakeredis.FakeServer()))
+    client = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+    _load_functions_pa(client)
+    monkeypatch.setattr(utils_redis, 'r', client)
     return utils_redis
 
 
@@ -70,6 +96,7 @@ def real_redis(monkeypatch):
         client.ping()
     except redis.exceptions.RedisError:
         pytest.skip('no Redis server reachable')
+    _load_functions_pa(client)
     utils_redis = _env(monkeypatch)
     monkeypatch.setattr(utils_redis, 'r', client)
     created = []
@@ -124,7 +151,8 @@ def _creature():
 def test_try_consume_pa_affordable_spends(pa_redis):
     creatureuuid = _creature()
 
-    assert pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=2, tick=TICK) is True
+    spent = pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=2, tick=TICK)
+    assert spent == {'red': 1, 'blue': 2}
 
     assert _pa(pa_redis, creatureuuid) == {'red': 15, 'blue': 6}
 
@@ -144,7 +172,8 @@ def test_try_consume_pa_red_covers_blue_shortfall(pa_redis):
     creatureuuid = _creature()
     _set_pa(pa_redis, creatureuuid, red=10, blue=2)
 
-    assert pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=3, tick=TICK) is True
+    spent = pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=3, tick=TICK)
+    assert spent == {'red': 2, 'blue': 2}
 
     assert _pa(pa_redis, creatureuuid) == {'red': 8, 'blue': 0}
 
@@ -153,7 +182,8 @@ def test_try_consume_pa_exact_boundary(pa_redis):
     creatureuuid = _creature()
     _set_pa(pa_redis, creatureuuid, red=3, blue=0)
 
-    assert pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=2, tick=TICK) is True
+    spent = pa_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=2, tick=TICK)
+    assert spent == {'red': 3, 'blue': 0}
 
     assert _pa(pa_redis, creatureuuid) == {'red': 0, 'blue': 0}
 
@@ -164,7 +194,7 @@ def test_try_consume_pa_unaffordable_spends_nothing(pa_redis, redpa, bluepa):
     _set_pa(pa_redis, creatureuuid, red=3, blue=1)
     before = {key: pa_redis.r.ttl(key) for key in _keys(pa_redis, creatureuuid).values()}
 
-    assert pa_redis.try_consume_pa(creatureuuid, redpa=redpa, bluepa=bluepa, tick=TICK) is False
+    assert pa_redis.try_consume_pa(creatureuuid, redpa=redpa, bluepa=bluepa, tick=TICK) is None
 
     after = {key: pa_redis.r.ttl(key) for key in _keys(pa_redis, creatureuuid).values()}
     assert after == before
@@ -173,16 +203,19 @@ def test_try_consume_pa_unaffordable_spends_nothing(pa_redis, redpa, bluepa):
 def test_try_consume_pa_zero_cost_writes_nothing(pa_redis):
     creatureuuid = _creature()
 
-    assert pa_redis.try_consume_pa(creatureuuid, tick=TICK) is True
+    # Paid, nothing spent: still truthy
+    spent = pa_redis.try_consume_pa(creatureuuid, tick=TICK)
+    assert spent == {'red': 0, 'blue': 0}
 
     assert not pa_redis.r.exists(*_keys(pa_redis, creatureuuid).values())
 
 
 def test_try_consume_pa_outside_instance(pa_redis, monkeypatch):
-    """ No Instance, no PA: True and Redis is never called. """
+    """ No Instance, no PA: paid with nothing spent, Redis is never called. """
     monkeypatch.setattr(pa_redis, 'r', None)
 
-    assert pa_redis.try_consume_pa(_creature(), redpa=99, bluepa=99, tick=None) is True
+    spent = pa_redis.try_consume_pa(_creature(), redpa=99, bluepa=99, tick=None)
+    assert spent == {'red': 0, 'blue': 0}
 
 
 def test_try_consume_pa_tick_is_keyword_only_and_mandatory(pa_redis):
@@ -190,6 +223,20 @@ def test_try_consume_pa_tick_is_keyword_only_and_mandatory(pa_redis):
         pa_redis.try_consume_pa(_creature(), 0, 1, TICK)
     with pytest.raises(TypeError):
         pa_redis.try_consume_pa(_creature(), bluepa=1)
+
+
+def test_try_consume_pa_counts_only_fully_regenerated_pa(pa_redis):
+    """
+    functions_pa: pa = max - ceil(rem/dur), a PA counts once fully regenerated.
+    1 s left on the red pool: 15 red PA, not 16. get_pa() still rounds (16):
+    the readers move to pa_read in a follow-up PR, this test pins the gap.
+    """
+    creatureuuid = _creature()
+    pa_redis.r.set(_keys(pa_redis, creatureuuid)['red'], 'None', ex=1)
+
+    assert _pa(pa_redis, creatureuuid)['red'] == 16
+    assert pa_redis.try_consume_pa(creatureuuid, redpa=16, tick=TICK) is None
+    assert pa_redis.try_consume_pa(creatureuuid, redpa=15, tick=TICK) == {'red': 15, 'blue': 0}
 
 
 #
@@ -229,9 +276,11 @@ def test_refund_pa_red_covered_part_is_refunded_as_red(pa_redis):
     """ Q104: 1 blue left, 2 blue spent as 1 blue + 1 red: the refund is per pool. """
     creatureuuid = _creature()
     _set_pa(pa_redis, creatureuuid, red=10, blue=1)
-    pa_redis.try_consume_pa(creatureuuid, bluepa=2, tick=TICK)
+    spent = pa_redis.try_consume_pa(creatureuuid, bluepa=2, tick=TICK)
+    assert spent == {'red': 1, 'blue': 1}
 
-    pa_redis.refund_pa(creatureuuid, redpa=1, bluepa=1, tick=TICK)
+    # What try_consume_pa() returned is exactly what to give back
+    pa_redis.refund_pa(creatureuuid, redpa=spent['red'], bluepa=spent['blue'], tick=TICK)
 
     assert _pa(pa_redis, creatureuuid) == {'red': 10, 'blue': 1}
 
@@ -253,7 +302,7 @@ def _race(utils_redis, creatureuuid, redpa, bluepa):
     def consume():
         barrier.wait()
         results.append(utils_redis.try_consume_pa(
-            creatureuuid, redpa=redpa, bluepa=bluepa, tick=TICK))
+            creatureuuid, redpa=redpa, bluepa=bluepa, tick=TICK) is not None)
 
     threads = [threading.Thread(target=consume) for _ in range(2)]
     for thread in threads:
@@ -292,102 +341,56 @@ def test_consume_and_refund_on_real_redis(real_redis):
     creatureuuid = _creature()
     created.append(creatureuuid)
 
-    assert utils_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=9, tick=TICK) is True
+    spent = utils_redis.try_consume_pa(creatureuuid, redpa=1, bluepa=9, tick=TICK)
+    assert spent == {'red': 2, 'blue': 8}
     assert _pa(utils_redis, creatureuuid) == {'red': 14, 'blue': 0}
-    assert utils_redis.try_consume_pa(creatureuuid, redpa=15, tick=TICK) is False
+    assert utils_redis.try_consume_pa(creatureuuid, redpa=15, tick=TICK) is None
 
     utils_redis.refund_pa(creatureuuid, redpa=2, bluepa=8, tick=TICK)
     assert _pa(utils_redis, creatureuuid) == {'red': 16, 'blue': 8}
 
 
 def test_partial_pools_consume_and_refund_on_real_redis(real_redis):
-    """ Existing keys: the spend and the refund move their TTL (EXPIRE), never SET or DEL. """
+    """ Existing keys: the spend and the refund move their TTL, the keys stay. """
     utils_redis, created = real_redis
     creatureuuid = _creature()
     created.append(creatureuuid)
     _set_pa(utils_redis, creatureuuid, red=10, blue=5)
 
-    assert utils_redis.try_consume_pa(creatureuuid, redpa=2, bluepa=3, tick=TICK) is True
+    spent = utils_redis.try_consume_pa(creatureuuid, redpa=2, bluepa=3, tick=TICK)
+    assert spent == {'red': 2, 'blue': 3}
     assert _pa(utils_redis, creatureuuid) == {'red': 8, 'blue': 2}
 
     utils_redis.refund_pa(creatureuuid, redpa=1, bluepa=2, tick=TICK)
     assert _pa(utils_redis, creatureuuid) == {'red': 9, 'blue': 4}
+    assert utils_redis.r.exists(*_keys(utils_redis, creatureuuid).values()) == 2
 
 
 #
-# Lua: the script duplicates utils.pa (Q104 split, TTL arithmetic), checked on a grid
+# functions_pa: the library the tests load is the one helm deploys
 #
-class _RecordingRedis:
-    """ The `redis` table the script sees: TTL from a dict, writes recorded. """
+def test_functions_pa_copy_is_the_helm_file():
+    """
+    fixtures/functions_pa.lua is byte-identical to helm's file at
+    FUNCTIONS_PA_HELM_COMMIT: an edit to the copy fails here, so the
+    copy cannot drift silently from the source of truth.
+    """
+    with open(FUNCTIONS_PA_FILE, 'rb') as lua:
+        # A Windows checkout may turn LF into CRLF; the blob in git has LF
+        content = lua.read().replace(b'\r\n', b'\n')
+    blob = hashlib.sha1(b'blob %d\x00' % len(content) + content).hexdigest()
 
-    def __init__(self, ttls):
-        self.ttls = ttls
-        self.writes = []
-
-    def call(self, command, key, *args):
-        if command == 'TTL':
-            return self.ttls[key]
-        # Redis needs whole numbers: a fractional TTL would be refused there
-        for arg in args:
-            assert isinstance(arg, str) or float(arg).is_integer(), (command, key, args)
-        self.writes.append((command, key) + tuple(arg if isinstance(arg, str) else int(arg)
-                                                  for arg in args))
-
-
-def _python_reference(ttls, red_cost, blue_cost, durations):
-    """ What utils.pa says the script must do: (result, writes). """
-    pa_max = {'blue': BLUE_PA_MAX, 'red': RED_PA_MAX}
-    available = {colour: pa_from_ttl(ttls[colour], pa_max[colour], durations[colour])['pa']
-                 for colour in ('blue', 'red')}
-    split = pa_cost_split(available['red'], available['blue'], red_cost, blue_cost)
-    if split is None:
-        return 0, []
-    writes = []
-    for colour in ('blue', 'red'):
-        if split[colour] > 0:
-            new_ttl = ttl_after_spend(ttls[colour], split[colour], durations[colour])
-            if ttls[colour] > 0:
-                writes.append(('EXPIRE', colour, new_ttl))
-            else:
-                writes.append(('SET', colour, 'None', 'EX', new_ttl))
-    return 1, writes
+    assert blob == FUNCTIONS_PA_HELM_BLOB, (
+        f'{FUNCTIONS_PA_FILE} differs from singouins/helm {FUNCTIONS_PA_HELM_PATH}'
+        f' at {FUNCTIONS_PA_HELM_COMMIT}')
 
 
-def _ttl_grid(pa_max, duration):
-    """ Absent, no expiry, then around every half PA up to past the max. """
-    ttls = {-2, -1}
-    for half in range(0, 2 * pa_max + 3):
-        for delta in (-1, 0, 1):
-            ttl = half * duration // 2 + delta
-            if ttl > 0:
-                ttls.add(ttl)
-    return sorted(ttls)
+def test_functions_pa_version(pa_redis):
+    assert pa_redis.r.fcall('pa_version', 0) == FUNCTIONS_PA_VERSION
 
 
-@pytest.mark.parametrize('tick', [60, 3600])
-def test_lua_matches_python_q104_and_ttl_arithmetic(pa_redis, tick):
-    from lupa.lua51 import LuaRuntime
+def test_functions_pa_version_on_real_redis(real_redis):
+    """ What the CI Redis runs: the API is written against VERSION 3. """
+    utils_redis, _ = real_redis
 
-    durations = pa_durations(tick)
-    lua = LuaRuntime()
-    script = lua.eval('function() ' + pa_redis.TRY_CONSUME_PA_LUA + ' end')
-    lua_globals = lua.globals()
-    lua_globals.KEYS = lua.table('blue', 'red')
-    checked = 0
-    for blue_ttl in _ttl_grid(BLUE_PA_MAX, durations['blue']):
-        for red_ttl in _ttl_grid(RED_PA_MAX, durations['red']):
-            ttls = {'blue': blue_ttl, 'red': red_ttl}
-            for red_cost in (0, 1, 5, 16):
-                for blue_cost in (0, 1, 3, 8, 9):
-                    stub = _RecordingRedis(ttls)
-                    lua_globals.redis = stub
-                    # Strings, as Redis passes ARGV
-                    lua_globals.ARGV = lua.table(*map(str, (
-                        red_cost, blue_cost, durations['red'], durations['blue'],
-                        RED_PA_MAX, BLUE_PA_MAX,
-                        )))
-                    result = int(script())
-                    expected = _python_reference(ttls, red_cost, blue_cost, durations)
-                    assert (result, stub.writes) == expected, (ttls, red_cost, blue_cost)
-                    checked += 1
-    assert checked > 10000
+    assert utils_redis.r.fcall('pa_version', 0) == FUNCTIONS_PA_VERSION
