@@ -8,7 +8,7 @@ from typing import Optional
 
 from flask import jsonify, request
 from loguru import logger
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from mongo.models.Corpse import CorpseDocument
 from mongo.models.Creature import CreatureDocument
@@ -28,6 +28,27 @@ class InternalCallSchema(BaseModel):
     by: Optional[uuid.UUID] = None
     at: datetime.datetime
     requestId: uuid.UUID
+
+
+class RemoveCallSchema(InternalCallSchema):
+    """
+    Body of /creature/<id>/remove: `by` is the killer, `assists` the Creatures
+    that helped. `assists` is cleaned, never refused (the resolver only retries
+    on 5xx, a 400 would lose the kill): duplicates are dropped (first seen
+    order kept) and so is the killer, who is never his own assist.
+    """
+    assists: list[uuid.UUID] = []
+
+    @model_validator(mode='after')
+    def clean_assists(self):
+        seen = {self.by} if self.by is not None else set()
+        cleaned = []
+        for assist in self.assists:
+            if assist not in seen:
+                seen.add(assist)
+                cleaned.append(assist)
+        self.assists = cleaned
+        return self
 
 
 def _bad_request(msg: str, payload=None):
@@ -209,7 +230,7 @@ def remove(instanceid, creatureid):
         return _bad_request('JSON object expected')
 
     try:
-        call = InternalCallSchema(**request.json)  # Validate and parse the JSON data
+        call = RemoveCallSchema(**request.json)  # Validate and parse the JSON data
     except ValidationError as e:
         return _bad_request('Validation and parsing error', e.errors())
 
