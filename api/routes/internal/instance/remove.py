@@ -59,6 +59,19 @@ def _xp_participants(call: RemoveCallSchema) -> list:
     return killer + call.assists
 
 
+def _count_xp(h: str, creatureid, gain: int):
+    """
+    Adds a granted gain to the Singouin's general.xp highscore (every XP
+    gained, all levels together). Never raises: the XP itself is already
+    written, a failure here only loses the count.
+    """
+    try:
+        HighscoreDocument.objects(_id=creatureid).update_one(
+            inc__general__xp=gain, set__updated=utcnow())
+    except Exception as e:
+        logger.error(f'{h} Highscore xp KO for Creature({creatureid}) [{e}]')
+
+
 def _grant_xp_to(h: str, Singouin, Creature, players: int):
     """
     One Singouin's XP for the kill, level-ups included (utils/xp.py). The
@@ -79,6 +92,8 @@ def _grant_xp_to(h: str, Singouin, Creature, players: int):
         if written:
             up = f', level up:{Singouin.level}->{level}' if level > Singouin.level else ''
             logger.info(f'{h} XP OK for Creature({Singouin.id}) (+{gain}{up})')
+            # Outside the write loop: a highscore failure never retries the XP
+            _count_xp(h, Singouin.id, gain)
             return
         Singouin = CreatureDocument.objects(_id=Singouin.id).only('_id', 'level', 'xp').first()
         if Singouin is None:

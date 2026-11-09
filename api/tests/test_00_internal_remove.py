@@ -202,9 +202,9 @@ class _One:
 class _Highscores:
     """
     Stands for HighscoreDocument.objects: objects(_id=x).update_one() and
-    objects(_id__in=[...]).update() $inc general.kill / general.assist in
-    `counters` ({id: {'kill': n, 'assist': n}}, Singouins only), and return
-    how many documents matched. failures['kill'] / failures['assist'] raise.
+    objects(_id__in=[...]).update() apply each inc__general__<counter>=n to
+    `counters` ({id: {'kill': n, 'assist': n, 'xp': n}}, Singouins only) and
+    return how many documents matched. failures['highscore_<counter>'] raises.
     """
     def __init__(self, counters, failures):
         self.counters = counters
@@ -214,17 +214,16 @@ class _Highscores:
         ids = [_id] if _id__in is None else _id__in
         matched = [self.counters[i] for i in ids if i in self.counters]
 
-        def inc(counter):
-            if self.failures.get(counter) is not None:
-                raise self.failures[counter]
-            for document in matched:
-                document[counter] += 1
+        def inc(set__updated, **increments):
+            for key, value in increments.items():
+                counter = key.removeprefix('inc__general__')
+                if self.failures.get(f'highscore_{counter}') is not None:
+                    raise self.failures[f'highscore_{counter}']
+                for document in matched:
+                    document[counter] += value
             return len(matched)
 
-        return types.SimpleNamespace(
-            update_one=lambda inc__general__kill, set__updated: inc('kill'),
-            update=lambda inc__general__assist, set__updated: inc('assist'),
-            )
+        return types.SimpleNamespace(update_one=inc, update=inc)
 
 
 class _Collection:
@@ -278,7 +277,7 @@ def world(modules, corpse_model, monkeypatch):
     in dicts; r.publish(), purge_creature_keys() and Creature.delete() append
     to `events` in call order. failures['publish'] / failures['purge'] set to
     an exception make that call raise instead (failures['xp'] for the XP
-    update, see _One, with hooks; failures['kill'] / ['assist'] for the
+    update, see _One, with hooks; failures['highscore_<counter>'] for the
     highscores, see _Highscores). Every Singouin added gets its highscore
     counters in `highscores`. Corpses are real documents on mongomock, read
     back with corpses().
@@ -325,7 +324,7 @@ def world(modules, corpse_model, monkeypatch):
         creatures[_id] = _document(
             events, creatures, _id, instance, account, delete_error, **fields)
         if account is not None:
-            highscores.setdefault(_id, {'kill': 0, 'assist': 0})
+            highscores.setdefault(_id, {'kill': 0, 'assist': 0, 'xp': 0})
         return creatures[_id]
 
     def post(creatureid=MONSTER_ID, instanceid=INSTANCE_ID, body=None, token=TOKEN):
@@ -883,17 +882,22 @@ def test_xp_retry_after_a_500_pays_once(xp, failure):
 
 #
 # Highscores: +1 general.kill for the killer, +1 general.assist for each
-# assist. Singouins only (they alone have a Highscore), once per kill
+# assist, + each Singouin's granted XP to general.xp. Singouins only (they
+# alone have a Highscore), once per kill
 #
+def _scores(kill=0, assist=0, xp=0):
+    return {'kill': kill, 'assist': assist, 'xp': xp}
+
+
 def test_highscores_killer_kill_assists_assist(xp):
     killer, first, second = xp.singouin(), xp.singouin(), xp.singouin()
 
     response = xp.post(body=_body(killer, [first, second]))
 
     assert response.status_code == 200
-    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
-    assert xp.highscores[first] == {'kill': 0, 'assist': 1}
-    assert xp.highscores[second] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[killer] == _scores(kill=1, xp=150)
+    assert xp.highscores[first] == _scores(assist=1, xp=150)
+    assert xp.highscores[second] == _scores(assist=1, xp=150)
 
 
 def test_highscores_killer_repeated_in_assists_is_only_the_killer(xp):
@@ -901,8 +905,8 @@ def test_highscores_killer_repeated_in_assists_is_only_the_killer(xp):
 
     xp.post(body=_body(killer, [killer, assist, assist]))
 
-    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
-    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[killer] == _scores(kill=1, xp=187)
+    assert xp.highscores[assist] == _scores(assist=1, xp=187)
 
 
 def test_highscores_assists_without_killer(xp):
@@ -911,7 +915,7 @@ def test_highscores_assists_without_killer(xp):
     response = xp.post(body=_body(None, [assist]))
 
     assert response.status_code == 200
-    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[assist] == _scores(assist=1, xp=300)
 
 
 def test_highscores_monsters_and_unknown_ids_count_nothing(xp):
@@ -922,8 +926,7 @@ def test_highscores_monsters_and_unknown_ids_count_nothing(xp):
     response = xp.post(body=_body(monster_killer, [assist, uuid.uuid4()]))
 
     assert response.status_code == 200
-    assert monster_killer not in xp.highscores
-    assert xp.highscores == {assist: {'kill': 0, 'assist': 1}}
+    assert xp.highscores == {assist: _scores(assist=1, xp=300)}
 
 
 def test_highscores_retry_after_removed_counts_nothing_more(xp):
@@ -933,8 +936,8 @@ def test_highscores_retry_after_removed_counts_nothing_more(xp):
 
     assert xp.post(body=body).json['payload'] == {"result": 'gone'}
 
-    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
-    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[killer] == _scores(kill=1, xp=187)
+    assert xp.highscores[assist] == _scores(assist=1, xp=187)
 
 
 def test_highscores_retry_after_a_500_counts_once(xp):
@@ -943,41 +946,98 @@ def test_highscores_retry_after_a_500_counts_once(xp):
     body = _body(killer, [assist])
 
     assert xp.post(body=body).status_code == 500
-    assert xp.highscores[killer] == {'kill': 0, 'assist': 0}
+    assert xp.highscores[killer] == _scores()
 
     xp.add(MONSTER_ID, level=30, rarity='Medium')
     assert xp.post(body=body).json['payload'] == {"result": 'removed'}
 
-    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
-    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[killer] == _scores(kill=1, xp=187)
+    assert xp.highscores[assist] == _scores(assist=1, xp=187)
 
 
-@pytest.mark.parametrize('counter', ['kill', 'assist'])
-def test_highscores_failure_keeps_the_200_the_xp_and_the_other_counter(xp, counter):
+@pytest.mark.parametrize('counter', ['kill', 'assist', 'xp'])
+def test_highscores_one_counter_failing_keeps_the_200_the_xp_and_the_others(xp, counter):
     killer, assist = xp.singouin(), xp.singouin()
-    xp.failures[counter] = RuntimeError('mongo down')
+    xp.failures[f'highscore_{counter}'] = RuntimeError('mongo down')
 
     response = xp.post(body=_body(killer, [assist]))
 
     assert response.status_code == 200
     assert response.json['payload'] == {"result": 'removed'}
+    # The XP itself is written whatever happens to its highscore
     assert [xp.state(killer), xp.state(assist)] == [(30, 187), (30, 187)]
-    other = 'assist' if counter == 'kill' else 'kill'
-    expected = {'kill': {killer: 1}, 'assist': {assist: 1}}
-    for _id, count in expected[other].items():
-        assert xp.highscores[_id][other] == count
-    for _id in expected[counter]:
-        assert xp.highscores[_id][counter] == 0
+    expected = {
+        killer: _scores(kill=1, xp=187),
+        assist: _scores(assist=1, xp=187),
+        }
+    for _id, scores in expected.items():
+        scores[counter] = 0
+        assert xp.highscores[_id] == scores
 
 
-def test_highscores_counted_when_the_xp_fails(xp):
+def test_highscores_kill_counted_when_the_xp_fails(xp):
     killer = xp.singouin()
     xp.failures['xp'] = RuntimeError('mongo down')
 
     xp.post(body=_body(killer))
 
     assert xp.state(killer) == (30, 0)
-    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
+    # No XP written, none counted
+    assert xp.highscores[killer] == _scores(kill=1)
+
+
+def test_highscores_xp_counts_the_whole_gain_across_a_level_up(xp):
+    # 1 331 + 300 levels up to 31 with 200: general.xp still gets the 300
+    killer = xp.singouin(level=30, xp=1331)
+
+    xp.post(body=_body(killer))
+
+    assert xp.state(killer) == (31, 200)
+    assert xp.highscores[killer]['xp'] == 300
+
+
+def test_highscores_xp_adds_up_over_kills(xp):
+    killer = xp.singouin()
+    xp.post(body=_body(killer))
+    xp.add(MONSTER_ID, level=30, rarity='Medium')
+
+    xp.post(body=_body(killer))
+
+    assert xp.highscores[killer] == _scores(kill=2, xp=600)
+
+
+def test_highscores_xp_nothing_at_the_max_level(xp):
+    killer = xp.singouin(level=100)
+
+    xp.post(body=_body(killer))
+
+    assert xp.highscores[killer] == _scores(kill=1)
+
+
+def test_highscores_xp_counted_once_after_a_write_conflict(xp):
+    killer = xp.singouin(level=30, xp=1000)
+
+    def other_kill():
+        xp.creatures[killer].xp += 300
+    xp.hooks['before_write'] = [other_kill]
+
+    xp.post(body=_body(killer))
+
+    assert xp.state(killer) == (31, 169)
+    # This kill's 300 only: the other kill counts its own
+    assert xp.highscores[killer]['xp'] == 300
+
+
+def test_highscores_xp_nothing_when_the_write_gives_up(xp):
+    killer = xp.singouin()
+
+    def other_kill():
+        xp.creatures[killer].xp += 1
+    xp.hooks['before_write'] = [other_kill] * xp.route.XP_WRITE_ATTEMPTS
+
+    xp.post(body=_body(killer))
+
+    assert xp.highscores[killer]['xp'] == 0
 
 
 #
