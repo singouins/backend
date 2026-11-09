@@ -1,6 +1,7 @@
 # -*- coding: utf8 -*-
 
 import datetime
+import importlib
 import os
 import sys
 import types
@@ -27,7 +28,7 @@ CREATURE_ID = uuid.uuid4()
 KORP_ID = uuid.uuid4()
 SQUAD_ID = uuid.uuid4()
 
-# routes.internal.instance imports the Mongo models, directly and through
+# routes.internal.instance.eject imports the Mongo models, directly and through
 # utils.decorators / utils.instance. Importing the real mongo package connects
 # to Mongo and loads the metas (mongo/__init__.py), so these leaves are stubbed
 # in sys.modules: once a dotted name is there, Python never imports its parents.
@@ -44,6 +45,9 @@ MODEL_STUBS = {
 ISOLATED = [
     'routes.internal',
     'routes.internal.instance',
+    'routes.internal.instance._tools',
+    'routes.internal.instance.eject',
+    'routes.internal.instance.remove',
     'utils.decorators',
     'utils.instance',
     ]
@@ -84,7 +88,7 @@ def _creature(korp_id=None, squad_id=None, korp=True, squad=True,
 @pytest.fixture
 def route(monkeypatch):
     """
-    Imports routes.internal.instance against stubbed models. Inside api/tests,
+    Imports routes.internal.instance.eject against stubbed models. Inside api/tests,
     `variables` resolves to tests/variables.py (loaded by conftest), not
     api/variables.py (which connects to Mongo at import), so the names the
     imported modules need from it are provided here.
@@ -116,7 +120,9 @@ def route(monkeypatch):
         attribute = _ABSENT if parent_module is None else getattr(parent_module, child, _ABSENT)
         saved[name] = (sys.modules.pop(name, None), attribute)
     try:
-        import routes.internal.instance as module
+        # Not `import ... as`: the package re-exports the eject() function under
+        # the submodule's name, and that attribute would win over the module
+        module = importlib.import_module('routes.internal.instance.eject')
         yield module
     finally:
         for name, (previous, _) in saved.items():
