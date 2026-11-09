@@ -42,6 +42,7 @@ SINGOUIN_ID = uuid.uuid4()
 MODEL_STUBS = {
     'mongo.models.Corpse': ['CorpseDocument'],
     'mongo.models.Creature': ['CreatureDocument'],
+    'mongo.models.Highscore': ['HighscoreDocument'],
     'mongo.models.Instance': ['InstanceDocument'],
     'mongo.models.Item': ['ItemDocument'],
     'mongo.models.Korp': ['KorpDocument'],
@@ -198,6 +199,34 @@ class _One:
         return 1
 
 
+class _Highscores:
+    """
+    Stands for HighscoreDocument.objects: objects(_id=x).update_one() and
+    objects(_id__in=[...]).update() $inc general.kill / general.assist in
+    `counters` ({id: {'kill': n, 'assist': n}}, Singouins only), and return
+    how many documents matched. failures['kill'] / failures['assist'] raise.
+    """
+    def __init__(self, counters, failures):
+        self.counters = counters
+        self.failures = failures
+
+    def __call__(self, _id=None, _id__in=None):
+        ids = [_id] if _id__in is None else _id__in
+        matched = [self.counters[i] for i in ids if i in self.counters]
+
+        def inc(counter):
+            if self.failures.get(counter) is not None:
+                raise self.failures[counter]
+            for document in matched:
+                document[counter] += 1
+            return len(matched)
+
+        return types.SimpleNamespace(
+            update_one=lambda inc__general__kill, set__updated: inc('kill'),
+            update=lambda inc__general__assist, set__updated: inc('assist'),
+            )
+
+
 class _Collection:
     """
     Stands for Document.objects: objects(_id=x, ...) is a _One;
@@ -249,8 +278,10 @@ def world(modules, corpse_model, monkeypatch):
     in dicts; r.publish(), purge_creature_keys() and Creature.delete() append
     to `events` in call order. failures['publish'] / failures['purge'] set to
     an exception make that call raise instead (failures['xp'] for the XP
-    update, see _One, with hooks). Corpses are real documents on mongomock,
-    read back with corpses().
+    update, see _One, with hooks; failures['kill'] / ['assist'] for the
+    highscores, see _Highscores). Every Singouin added gets its highscore
+    counters in `highscores`. Corpses are real documents on mongomock, read
+    back with corpses().
     """
     route = modules.route
     monkeypatch.setattr(route, 'CorpseDocument', corpse_model.CorpseDocument)
@@ -258,6 +289,7 @@ def world(modules, corpse_model, monkeypatch):
     creatures = {}
     failures = {}
     hooks = {}
+    highscores = {}
     instances = {
         INSTANCE_ID: types.SimpleNamespace(
             id=INSTANCE_ID,
@@ -266,6 +298,7 @@ def world(modules, corpse_model, monkeypatch):
         }
     monkeypatch.setattr(route, 'CreatureDocument', types.SimpleNamespace(objects=_Collection(creatures, failures, hooks)))  # noqa: E501
     monkeypatch.setattr(route, 'InstanceDocument', types.SimpleNamespace(objects=_Collection(instances)))  # noqa: E501
+    monkeypatch.setattr(route, 'HighscoreDocument', types.SimpleNamespace(objects=_Highscores(highscores, failures)))  # noqa: E501
 
     def publish(channel, data):
         if failures.get('publish') is not None:
@@ -291,6 +324,8 @@ def world(modules, corpse_model, monkeypatch):
     def add(_id, instance=INSTANCE_ID, account=None, delete_error=None, **fields):
         creatures[_id] = _document(
             events, creatures, _id, instance, account, delete_error, **fields)
+        if account is not None:
+            highscores.setdefault(_id, {'kill': 0, 'assist': 0})
         return creatures[_id]
 
     def post(creatureid=MONSTER_ID, instanceid=INSTANCE_ID, body=None, token=TOKEN):
@@ -310,6 +345,7 @@ def world(modules, corpse_model, monkeypatch):
     return types.SimpleNamespace(
         add=add, post=post, events=events, creatures=creatures, instances=instances,
         failures=failures, hooks=hooks, corpses=corpses, route=route,
+        highscores=highscores,
         )
 
 
@@ -843,6 +879,105 @@ def test_xp_retry_after_a_500_pays_once(xp, failure):
     assert xp.post(body=body).json['payload'] == {"result": 'removed'}
 
     assert xp.state(killer) == (30, 300)
+
+
+#
+# Highscores: +1 general.kill for the killer, +1 general.assist for each
+# assist. Singouins only (they alone have a Highscore), once per kill
+#
+def test_highscores_killer_kill_assists_assist(xp):
+    killer, first, second = xp.singouin(), xp.singouin(), xp.singouin()
+
+    response = xp.post(body=_body(killer, [first, second]))
+
+    assert response.status_code == 200
+    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
+    assert xp.highscores[first] == {'kill': 0, 'assist': 1}
+    assert xp.highscores[second] == {'kill': 0, 'assist': 1}
+
+
+def test_highscores_killer_repeated_in_assists_is_only_the_killer(xp):
+    killer, assist = xp.singouin(), xp.singouin()
+
+    xp.post(body=_body(killer, [killer, assist, assist]))
+
+    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
+    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+
+
+def test_highscores_assists_without_killer(xp):
+    assist = xp.singouin()
+
+    response = xp.post(body=_body(None, [assist]))
+
+    assert response.status_code == 200
+    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+
+
+def test_highscores_monsters_and_unknown_ids_count_nothing(xp):
+    assist = xp.singouin()
+    monster_killer = uuid.uuid4()
+    xp.add(monster_killer)
+
+    response = xp.post(body=_body(monster_killer, [assist, uuid.uuid4()]))
+
+    assert response.status_code == 200
+    assert monster_killer not in xp.highscores
+    assert xp.highscores == {assist: {'kill': 0, 'assist': 1}}
+
+
+def test_highscores_retry_after_removed_counts_nothing_more(xp):
+    killer, assist = xp.singouin(), xp.singouin()
+    body = _body(killer, [assist])
+    assert xp.post(body=body).json['payload'] == {"result": 'removed'}
+
+    assert xp.post(body=body).json['payload'] == {"result": 'gone'}
+
+    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
+    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+
+
+def test_highscores_retry_after_a_500_counts_once(xp):
+    killer, assist = xp.singouin(), xp.singouin()
+    xp.add(MONSTER_ID, level=30, rarity='Medium', delete_error=RuntimeError('mongo down'))
+    body = _body(killer, [assist])
+
+    assert xp.post(body=body).status_code == 500
+    assert xp.highscores[killer] == {'kill': 0, 'assist': 0}
+
+    xp.add(MONSTER_ID, level=30, rarity='Medium')
+    assert xp.post(body=body).json['payload'] == {"result": 'removed'}
+
+    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
+    assert xp.highscores[assist] == {'kill': 0, 'assist': 1}
+
+
+@pytest.mark.parametrize('counter', ['kill', 'assist'])
+def test_highscores_failure_keeps_the_200_the_xp_and_the_other_counter(xp, counter):
+    killer, assist = xp.singouin(), xp.singouin()
+    xp.failures[counter] = RuntimeError('mongo down')
+
+    response = xp.post(body=_body(killer, [assist]))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    assert [xp.state(killer), xp.state(assist)] == [(30, 187), (30, 187)]
+    other = 'assist' if counter == 'kill' else 'kill'
+    expected = {'kill': {killer: 1}, 'assist': {assist: 1}}
+    for _id, count in expected[other].items():
+        assert xp.highscores[_id][other] == count
+    for _id in expected[counter]:
+        assert xp.highscores[_id][counter] == 0
+
+
+def test_highscores_counted_when_the_xp_fails(xp):
+    killer = xp.singouin()
+    xp.failures['xp'] = RuntimeError('mongo down')
+
+    xp.post(body=_body(killer))
+
+    assert xp.state(killer) == (30, 0)
+    assert xp.highscores[killer] == {'kill': 1, 'assist': 0}
 
 
 #
