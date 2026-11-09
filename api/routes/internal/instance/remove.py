@@ -9,8 +9,9 @@ from pydantic import ValidationError, model_validator
 
 from mongo.models.Corpse import CorpseDocument
 from mongo.models.Creature import CreatureDocument
+from mongo.models.Highscore import HighscoreDocument
 from mongo.models.Instance import InstanceDocument
-from mongo.utils import JSON_OPTIONS
+from mongo.utils import JSON_OPTIONS, utcnow
 
 from routes._decorators import internal
 from routes.internal.instance._tools import InternalCallSchema, bad_request
@@ -116,6 +117,30 @@ def _grant_xp(h: str, Creature, call: RemoveCallSchema):
             logger.error(f'{h} XP KO for Creature({Singouin.id}) [{e}]')
 
 
+def _count_kill(h: str, call: RemoveCallSchema):
+    """
+    Highscores of the kill: +1 general.kill for the killer (`by`), +1
+    general.assist for each assist. Only Singouins have a Highscore, so a
+    monster or an unknown id matches nothing. Same rules as _grant_xp: called
+    once the monster is gone (never counted twice), never raises (a failure
+    loses the count). The kill and the assists fail independently.
+    """
+    if call.by is not None:
+        try:
+            counted = HighscoreDocument.objects(_id=call.by).update_one(
+                inc__general__kill=1, set__updated=utcnow())
+            logger.debug(f'{h} Highscore kill OK (counted:{counted})')
+        except Exception as e:
+            logger.error(f'{h} Highscore kill KO [{e}]')
+    if call.assists:
+        try:
+            counted = HighscoreDocument.objects(_id__in=call.assists).update(
+                inc__general__assist=1, set__updated=utcnow())
+            logger.debug(f'{h} Highscore assist OK (counted:{counted}/{len(call.assists)})')
+        except Exception as e:
+            logger.error(f'{h} Highscore assist KO [{e}]')
+
+
 def _remove_gone(h: str, call: InternalCallSchema, why: str):
     """ Idempotent answer: the monster is not in this instance, nothing changed. """
     msg = f'{h} Remove OK (result:gone)'
@@ -138,7 +163,8 @@ def _remove_gone(h: str, call: InternalCallSchema, why: str):
 # - otherwise the monster is removed as instance close does it: AI kill, Redis
 #   keys purged, Creature deleted last. It leaves a Corpse (ruling Q105, see
 #   below), then its XP goes to the killer and the assists, level-ups
-#   included (_grant_xp, utils/xp.py).
+#   included (_grant_xp, utils/xp.py), and their kill / assist highscores
+#   go up (_count_kill).
 #   No Discord notice.
 # The resolver retries on 5xx only, so an internal failure is never a 200.
 @internal.token
@@ -231,9 +257,10 @@ def remove(instanceid, creatureid):
             }
         ), 500
 
-    # XP once the monster is gone, never before: a retry then answers 'gone'
-    # and never comes back here, so a kill is never paid twice
+    # XP and highscores once the monster is gone, never before: a retry then
+    # answers 'gone' and never comes back here, so a kill is never paid twice
     _grant_xp(h, Creature, call)
+    _count_kill(h, call)
 
     msg = f'{h} Remove OK (result:removed)'
     logger.info(f'{msg} Instance({instanceid}) (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')  # noqa: E501

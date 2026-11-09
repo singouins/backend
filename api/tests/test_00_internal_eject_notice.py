@@ -34,6 +34,7 @@ SQUAD_ID = uuid.uuid4()
 # in sys.modules: once a dotted name is there, Python never imports its parents.
 MODEL_STUBS = {
     'mongo.models.Creature': ['CreatureDocument'],
+    'mongo.models.Highscore': ['HighscoreDocument'],
     'mongo.models.Instance': ['InstanceDocument'],
     'mongo.models.Item': ['ItemDocument'],
     'mongo.models.Korp': ['KorpDocument'],
