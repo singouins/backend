@@ -50,6 +50,7 @@ def test_mongodb_highscore_new():
     assert str(newHighscore.id) == CREATURE_ID
     assert newHighscore.general.kill == 0
     assert newHighscore.general.assist == 0
+    assert newHighscore.general.xp == 0
     # Internal counters start at zero: shards by rarity, consumables created,
     # currency spent
     internal = HighscoreDocument.objects(_id=CREATURE_ID).get().internal
@@ -68,7 +69,7 @@ def test_mongodb_highscore_new():
         'health': {'base': {'created': 0}, 'fast': {'created': 0}, 'long': {'created': 0}},
         }
     assert stored['internal']['currency'] == {'spent': 0}
-    assert stored['general'] == {'assist': 0, 'death': 0, 'kill': 0}
+    assert stored['general'] == {'assist': 0, 'death': 0, 'kill': 0, 'xp': 0}
 
     #
     # Update
@@ -77,6 +78,7 @@ def test_mongodb_highscore_new():
     highscores_update_query = {
         'inc__general__kill': 10,
         'inc__general__assist': 3,
+        'inc__general__xp': 450,
         "set__updated": utcnow(),
         }
     newHighscore.update(**highscores_update_query)
@@ -90,6 +92,7 @@ def test_mongodb_highscore_get():
 
     assert Highscore.general.kill == 10
     assert Highscore.general.assist == 3
+    assert Highscore.general.xp == 450
 
 
 def test_mongodb_highscore_search():
