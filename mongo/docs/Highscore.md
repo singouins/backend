@@ -8,7 +8,8 @@
 ├── general
 │   ├── assist (IntField)
 │   ├── death (IntField)
-│   └── kill (IntField)
+│   ├── kill (IntField)
+│   └── xp (IntField)
 ├── internal
 │   ├── consumable
 │   │   └── health

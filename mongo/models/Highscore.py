@@ -200,10 +200,13 @@ class HighscoreGeneral(EmbeddedDocument):
     - assist (IntField)
     - death  (IntField)
     - kill   (IntField)
+    - xp     (IntField): every XP gained, all levels together (Creature.xp
+      only holds the current level's)
     """
     assist = IntField(required=True, default=0)
     death = IntField(required=True, default=0)
     kill = IntField(required=True, default=0)
+    xp = IntField(required=True, default=0)
 
 
 class HighscoreDocument(Document):
