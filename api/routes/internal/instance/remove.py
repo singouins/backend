@@ -16,6 +16,7 @@ from routes._decorators import internal
 from routes.internal.instance._tools import InternalCallSchema, bad_request
 from utils.decorators import check_is_json
 from utils.redis import purge_creature_keys, r
+from utils.xp import apply_xp, xp_gain
 from variables import PS_AI_CREATURE
 
 
@@ -40,6 +41,81 @@ class RemoveCallSchema(InternalCallSchema):
         return self
 
 
+# A Singouin's (level, xp) is written only if it is still what was read: on a
+# conflict (another kill resolved at the same time), it is read again and the
+# gain recomputed, at most this many times
+XP_WRITE_ATTEMPTS = 5
+
+
+def _xp_participants(call: RemoveCallSchema) -> list:
+    """
+    Who takes part in the kill: the killer (`by`, when set), then the assists.
+    RemoveCallSchema already dropped the duplicates and the killer from the
+    assists, so nobody is counted twice. The killer's Squad members are
+    expected in the assists, sent by the resolver: they are not looked up here.
+    """
+    killer = [call.by] if call.by is not None else []
+    return killer + call.assists
+
+
+def _grant_xp_to(h: str, Singouin, Creature, players: int):
+    """
+    One Singouin's XP for the kill, level-ups included (utils/xp.py). The
+    gain depends on the Singouin's level, and a level-up rewrites both level
+    and xp: so it is a read, compute, then a write conditioned on the
+    (level, xp) read. Another kill landing in between makes the write match
+    nothing: the Singouin is read again and the gain recomputed.
+    """
+    for _ in range(XP_WRITE_ATTEMPTS):
+        gain = xp_gain(Singouin.level, Creature.level, Creature.rarity, players)
+        if gain <= 0:
+            logger.info(f'{h} XP skipped for Creature({Singouin.id}) (gain:0, level:{Singouin.level})')  # noqa: E501
+            return
+        level, xp = apply_xp(Singouin.level, Singouin.xp, gain)
+        written = CreatureDocument.objects(
+            _id=Singouin.id, level=Singouin.level, xp=Singouin.xp,
+            ).update_one(set__level=level, set__xp=xp)
+        if written:
+            up = f', level up:{Singouin.level}->{level}' if level > Singouin.level else ''
+            logger.info(f'{h} XP OK for Creature({Singouin.id}) (+{gain}{up})')
+            return
+        Singouin = CreatureDocument.objects(_id=Singouin.id).only('_id', 'level', 'xp').first()
+        if Singouin is None:
+            logger.warning(f'{h} XP skipped (Creature deleted meanwhile)')
+            return
+    logger.error(f'{h} XP KO for Creature({Singouin.id}) (still conflicting after {XP_WRITE_ATTEMPTS} attempts)')  # noqa: E501
+
+
+def _grant_xp(h: str, Creature, call: RemoveCallSchema):
+    """
+    Gives the XP of a monster's death to the participants who are Singouins
+    (an account): a monster or an unknown id gets nothing and is not counted
+    in the group size. Each Singouin's gain is computed from its own level
+    (utils/xp.py: level gap, rarity, group bonus, cap), and may level it up.
+    Never raises: the remove is already done, and a failure must not turn it
+    into a 500 (a retry would answer 'gone' anyway). A failure loses the XP,
+    for that Singouin only.
+    """
+    try:
+        participants = _xp_participants(call)
+        if not participants:
+            logger.info(f'{h} XP skipped (no participant)')
+            return
+        players = list(CreatureDocument.objects(
+            _id__in=participants, account__ne=None).only('_id', 'level', 'xp'))
+    except Exception as e:
+        logger.error(f'{h} XP KO [{e}]')
+        return
+    if not players:
+        logger.info(f'{h} XP skipped (no Singouin among {len(participants)} participant(s))')  # noqa: E501
+        return
+    for Singouin in players:
+        try:
+            _grant_xp_to(h, Singouin, Creature, len(players))
+        except Exception as e:
+            logger.error(f'{h} XP KO for Creature({Singouin.id}) [{e}]')
+
+
 def _remove_gone(h: str, call: InternalCallSchema, why: str):
     """ Idempotent answer: the monster is not in this instance, nothing changed. """
     msg = f'{h} Remove OK (result:gone)'
@@ -61,7 +137,9 @@ def _remove_gone(h: str, call: InternalCallSchema, why: str):
 # - a Singouin (has an account): 400, it goes through /eject;
 # - otherwise the monster is removed as instance close does it: AI kill, Redis
 #   keys purged, Creature deleted last. It leaves a Corpse (ruling Q105, see
-#   below). No Discord notice or rewards.
+#   below), then its XP goes to the killer and the assists, level-ups
+#   included (_grant_xp, utils/xp.py).
+#   No Discord notice.
 # The resolver retries on 5xx only, so an internal failure is never a 200.
 @internal.token
 @check_is_json
@@ -152,6 +230,10 @@ def remove(instanceid, creatureid):
                 "payload": None,
             }
         ), 500
+
+    # XP once the monster is gone, never before: a retry then answers 'gone'
+    # and never comes back here, so a kill is never paid twice
+    _grant_xp(h, Creature, call)
 
     msg = f'{h} Remove OK (result:removed)'
     logger.info(f'{msg} Instance({instanceid}) (requestId:{call.requestId}, reason:{call.reason}, by:{call.by})')  # noqa: E501
