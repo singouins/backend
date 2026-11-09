@@ -100,10 +100,33 @@ def test_gain_group_bonus(players, gain):
 
 
 def test_gain_is_capped_at_half_a_bar():
-    # Level 1: a Medium level 1 monster is worth 10, the whole bar; capped at 5
-    assert xp_gain(1, 1, 'Medium', 1) == 5
     # Level 10: the monster counts as level 15, 150 XP, capped at 108 (217 / 2)
     assert xp_gain(10, 50, 'Medium', 1) == 108
+    # Level 9: half a bar (92) is above a same level Medium kill (90)
+    assert xp_gain(9, 14, 'God', 1) == 92
+
+
+@pytest.mark.parametrize('level', range(1, 9))
+def test_gain_cap_is_never_below_a_same_level_medium_kill(level):
+    # Levels 1-8: half a bar is less than X * p, the cap is X * p instead
+    assert xp_required(level) / 2 < 10 * level
+    assert xp_gain(level, level, 'Medium', 1) == 10 * level
+    # A rarer or higher monster gets no more than that
+    assert xp_gain(level, level + 5, 'God', 1) == 10 * level
+
+
+def test_gain_cap_floor_keeps_rare_monsters_from_skipping_levels():
+    # A God 5 levels above a level 1 player is worth 960: one level, not nine
+    assert apply_xp(1, 0, xp_gain(1, 6, 'God', 1)) == (2, 0)
+
+
+def test_kills_per_level_follow_the_curve_at_low_levels():
+    # Same level Medium kills, solo, to leave each level: ceil(kills(p))
+    kills = [
+        -(-xp_required(level) // xp_gain(level, level, 'Medium', 1))
+        for level in range(1, 10)
+        ]
+    assert kills == [1, 2, 2, 2, 2, 2, 2, 2, 3]
 
 
 @pytest.mark.parametrize('player_level', [LEVEL_MAX, LEVEL_MAX + 1])

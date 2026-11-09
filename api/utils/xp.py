@@ -25,7 +25,10 @@ GAP_ABOVE_MAX = 5               # a monster counts as at most player level + 5
 GAP_BELOW = 10                  # a monster more than 10 levels below...
 GAP_BELOW_FACTOR = Decimal('0.1')  # ...is worth 10% of its XP
 GROUP_BONUS = Decimal('0.25')   # per extra player in the fight
-CAP_PER_KILL = Decimal('0.5')   # a kill gives at most half of the current bar
+CAP_PER_KILL = Decimal('0.5')   # a kill gives at most half of the current bar...
+# ...but never less than a same level Medium kill, solo (X * p): levels 1-8,
+# where kills(p) < 2, would else pay that reference kill below its worth
+# (Lordslair, 2026-11-06). From level 9 the half bar is always the larger.
 
 RARITY_MULTIPLIER = {
     'Small': Decimal('0.5'),
@@ -55,7 +58,8 @@ def xp_gain(player_level: int, monster_level: int, rarity: str, players: int) ->
     2. X * that level * the rarity multiplier;
     3. x GAP_BELOW_FACTOR if the (real) monster level is more than GAP_BELOW below;
     4. x (1 + GROUP_BONUS * (players - 1)) / players;
-    5. capped at CAP_PER_KILL of the player's current bar.
+    5. capped at CAP_PER_KILL of the player's current bar, that cap being
+       never below X * player level (a same level Medium kill, solo).
     0 at LEVEL_MAX, or with no player. An unknown rarity raises KeyError.
     """
     if player_level >= LEVEL_MAX or players < 1:
@@ -65,7 +69,8 @@ def xp_gain(player_level: int, monster_level: int, rarity: str, players: int) ->
     if monster_level < player_level - GAP_BELOW:
         xp *= GAP_BELOW_FACTOR
     xp = xp * (1 + GROUP_BONUS * (players - 1)) / players
-    xp = min(xp, CAP_PER_KILL * xp_required(player_level))
+    cap = max(CAP_PER_KILL * xp_required(player_level), XP_PER_MONSTER_LEVEL * player_level)
+    xp = min(xp, cap)
     return max(0, int(xp.to_integral_value(ROUND_FLOOR)))
 
 
