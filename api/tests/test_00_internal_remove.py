@@ -150,16 +150,75 @@ def corpse_model(monkeypatch):
     mongoengine.disconnect(alias=MOCK_ALIAS)
 
 
-class _Collection:
-    """ Stands for Document.objects: objects(_id=x).first() reads a dict by id. """
+class _QuerySet:
+    """ Stands for a filtered mongoengine QuerySet: iterable, only() is a no-op. """
     def __init__(self, documents):
         self.documents = documents
 
-    def __call__(self, _id=None, **kwargs):
-        return types.SimpleNamespace(first=lambda: self.documents.get(_id))
+    def __iter__(self):
+        return iter(self.documents)
+
+    def only(self, *fields):
+        return self
 
 
-def _document(events, store, _id, instance, account=None, delete_error=None):
+class _One:
+    """
+    Stands for Document.objects(_id=x, **filters): first(), only() (no-op) and
+    update_one(set__level=, set__xp=), applied only if the document still
+    matches the filters (returns 1, else 0). failures['xp'] makes it raise,
+    failures['xp_for'] (an id) only for that document. Each callable in
+    hooks['before_write'] runs once, just before a write (one per write): another
+    kill landing between the route's read and its write.
+    """
+    def __init__(self, documents, _id, filters, failures, hooks):
+        self.documents = documents
+        self._id = _id
+        self.filters = filters
+        self.failures = failures
+        self.hooks = hooks
+
+    def first(self):
+        return self.documents.get(self._id)
+
+    def only(self, *fields):
+        return self
+
+    def update_one(self, set__level, set__xp):
+        if self.failures.get('xp') is not None:
+            raise self.failures['xp']
+        if self.failures.get('xp_for') == self._id:
+            raise RuntimeError('mongo down for this one')
+        if self.hooks.get('before_write'):
+            self.hooks['before_write'].pop(0)()
+        document = self.documents.get(self._id)
+        if document is None or any(getattr(document, k) != v for k, v in self.filters.items()):
+            return 0
+        document.level, document.xp = set__level, set__xp
+        return 1
+
+
+class _Collection:
+    """
+    Stands for Document.objects: objects(_id=x, ...) is a _One;
+    objects(_id__in=[...], account__ne=None) filters the dict into a _QuerySet.
+    """
+    def __init__(self, documents, failures=None, hooks=None):
+        self.documents = documents
+        self.failures = {} if failures is None else failures
+        self.hooks = {} if hooks is None else hooks
+
+    def __call__(self, _id=None, _id__in=None, account__ne=_ABSENT, **filters):
+        if _id__in is None:
+            return _One(self.documents, _id, filters, self.failures, self.hooks)
+        return _QuerySet([
+            document for key, document in self.documents.items()
+            if key in _id__in and (account__ne is _ABSENT or document.account != account__ne)
+            ])
+
+
+def _document(events, store, _id, instance, account=None, delete_error=None,
+              level=3, xp=0, rarity='Big'):
     """ A Creature: delete() records the call and drops it from the store. """
     def delete():
         if delete_error is not None:
@@ -171,11 +230,12 @@ def _document(events, store, _id, instance, account=None, delete_error=None):
         account=account,
         gender=True,
         instance=instance,
-        level=3,
+        level=level,
         name='Monster',
         race=11,
-        rarity='Big',
+        rarity=rarity,
         x=4,
+        xp=xp,
         y=5,
         to_json=lambda json_options=None: json.dumps({"_id": str(_id), "name": 'Monster'}),
         delete=delete,
@@ -188,22 +248,24 @@ def world(modules, corpse_model, monkeypatch):
     Runs the remove view on a minimal Flask app. Creatures and Instances live
     in dicts; r.publish(), purge_creature_keys() and Creature.delete() append
     to `events` in call order. failures['publish'] / failures['purge'] set to
-    an exception make that call raise instead. Corpses are real documents on
-    mongomock, read back with corpses().
+    an exception make that call raise instead (failures['xp'] for the XP
+    update, see _One, with hooks). Corpses are real documents on mongomock,
+    read back with corpses().
     """
     route = modules.route
     monkeypatch.setattr(route, 'CorpseDocument', corpse_model.CorpseDocument)
     events = []
     creatures = {}
+    failures = {}
+    hooks = {}
     instances = {
         INSTANCE_ID: types.SimpleNamespace(
             id=INSTANCE_ID,
             to_json=lambda json_options=None: json.dumps({"_id": str(INSTANCE_ID)}),
             ),
         }
-    monkeypatch.setattr(route, 'CreatureDocument', types.SimpleNamespace(objects=_Collection(creatures)))  # noqa: E501
+    monkeypatch.setattr(route, 'CreatureDocument', types.SimpleNamespace(objects=_Collection(creatures, failures, hooks)))  # noqa: E501
     monkeypatch.setattr(route, 'InstanceDocument', types.SimpleNamespace(objects=_Collection(instances)))  # noqa: E501
-    failures = {}
 
     def publish(channel, data):
         if failures.get('publish') is not None:
@@ -226,8 +288,9 @@ def world(modules, corpse_model, monkeypatch):
         )
     client = app.test_client()
 
-    def add(_id, instance=INSTANCE_ID, account=None, delete_error=None):
-        creatures[_id] = _document(events, creatures, _id, instance, account, delete_error)
+    def add(_id, instance=INSTANCE_ID, account=None, delete_error=None, **fields):
+        creatures[_id] = _document(
+            events, creatures, _id, instance, account, delete_error, **fields)
         return creatures[_id]
 
     def post(creatureid=MONSTER_ID, instanceid=INSTANCE_ID, body=None, token=TOKEN):
@@ -246,7 +309,7 @@ def world(modules, corpse_model, monkeypatch):
 
     return types.SimpleNamespace(
         add=add, post=post, events=events, creatures=creatures, instances=instances,
-        failures=failures, corpses=corpses,
+        failures=failures, hooks=hooks, corpses=corpses, route=route,
         )
 
 
@@ -479,13 +542,16 @@ def test_remove_retry_after_delete_failure_is_removed(world):
 # Corpse (ruling Q105, Lordslair 2026-10-29): every dead monster leaves one,
 # with the monster id, so a resolver retry never makes a second one
 #
-def _body(by):
-    return {
+def _body(by, assists=None):
+    body = {
         "reason": 'death',
         "by": None if by is None else str(by),
         "at": '2026-10-29T00:00:00',
         "requestId": str(uuid.uuid4()),
         }
+    if assists is not None:
+        body['assists'] = [str(assist) for assist in assists]
+    return body
 
 
 def test_remove_leaves_one_corpse_with_the_monster_fields(world):
@@ -577,6 +643,206 @@ def test_remove_retry_after_failure_past_the_corpse_leaves_one_corpse(world):
     corpses = world.corpses()
     assert [corpse.id for corpse in corpses] == [MONSTER_ID]
     assert corpses[0].killer == killer
+
+
+#
+# XP (utils/xp.py, designer notes 2026-11-06): each Singouin among the killer
+# (`by`) and the assists gets its own gain, from its own level, and may level
+# up. Granted once the monster is gone, so never twice. The arithmetic itself
+# is covered by test_00_xp.py: here, a level 30 Medium monster against level
+# 30 Singouins is worth 300 solo, 187 each for 2 (x1.25/2), 150 each for 3
+#
+@pytest.fixture
+def xp(world):
+    """ The world with a level 30 Medium monster and a Singouin maker. """
+    world.add(MONSTER_ID, level=30, rarity='Medium')
+
+    def singouin(level=30, xp=0):
+        _id = uuid.uuid4()
+        world.add(_id, account=uuid.uuid4(), level=level, xp=xp)
+        return _id
+
+    world.singouin = singouin
+    world.state = lambda _id: (world.creatures[_id].level, world.creatures[_id].xp)
+    return world
+
+
+def test_xp_killer_alone(xp):
+    killer = xp.singouin()
+
+    response = xp.post(body=_body(killer))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    assert xp.state(killer) == (30, 300)
+
+
+def test_xp_group_bonus_between_killer_and_assists(xp):
+    killer, first, second = xp.singouin(), xp.singouin(), xp.singouin()
+
+    xp.post(body=_body(killer, [first, second]))
+
+    assert [xp.state(_id) for _id in (killer, first, second)] == [(30, 150)] * 3
+
+
+def test_xp_assists_without_killer(xp):
+    first, second = xp.singouin(), xp.singouin()
+
+    xp.post(body=_body(None, [first, second]))
+
+    assert [xp.state(first), xp.state(second)] == [(30, 187), (30, 187)]
+
+
+def test_xp_killer_repeated_in_assists_counts_once(xp):
+    killer, assist = xp.singouin(), xp.singouin()
+
+    xp.post(body=_body(killer, [killer, assist, assist]))
+
+    # Two players, not four
+    assert [xp.state(killer), xp.state(assist)] == [(30, 187), (30, 187)]
+
+
+def test_xp_each_gain_uses_its_own_level(xp):
+    killer = xp.singouin(level=30)
+    veteran = xp.singouin(level=50)
+
+    xp.post(body=_body(killer, [veteran]))
+
+    assert xp.state(killer) == (30, 187)
+    # 30 is more than 10 levels below 50: 300 x 0.1 x 1.25 / 2 = 18.75
+    assert xp.state(veteran) == (50, 18)
+
+
+def test_xp_monsters_and_unknown_ids_get_nothing_and_are_not_counted(xp):
+    killer = xp.singouin()
+    other_monster = uuid.uuid4()
+    xp.add(other_monster)
+
+    response = xp.post(body=_body(killer, [other_monster, uuid.uuid4()]))
+
+    assert response.status_code == 200
+    # Solo gain: the group is the Singouins only
+    assert xp.state(killer) == (30, 300)
+    assert xp.creatures[other_monster].xp == 0
+
+
+def test_xp_levels_up_and_keeps_the_excess(xp):
+    # 1 431 to leave level 30: 1 331 + 300 = 1 631, so level 31 with 200
+    killer = xp.singouin(level=30, xp=1331)
+
+    xp.post(body=_body(killer))
+
+    assert xp.state(killer) == (31, 200)
+
+
+def test_xp_nothing_more_at_the_max_level(xp):
+    killer = xp.singouin(level=100, xp=0)
+
+    response = xp.post(body=_body(killer))
+
+    assert response.status_code == 200
+    assert xp.state(killer) == (100, 0)
+
+
+@pytest.mark.parametrize('killer', ['none', 'monster'])
+def test_xp_without_a_singouin_is_still_removed(xp, killer):
+    by = None
+    if killer == 'monster':
+        by = uuid.uuid4()
+        xp.add(by)
+
+    response = xp.post(body=_body(by))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    assert MONSTER_ID not in xp.creatures
+    if by is not None:
+        assert xp.creatures[by].xp == 0
+
+
+def test_xp_concurrent_kill_is_read_again_not_overwritten(xp):
+    killer = xp.singouin(level=30, xp=1000)
+
+    def other_kill():
+        # Another kill lands between the route's read and its write
+        xp.creatures[killer].xp += 300
+    xp.hooks['before_write'] = [other_kill]
+
+    xp.post(body=_body(killer))
+
+    # 1 000 + 300 (the other kill) + 300 (this one) = 1 600: level 31 with 169
+    assert xp.state(killer) == (31, 169)
+
+
+def test_xp_endless_conflict_gives_up_and_keeps_the_200(xp):
+    killer = xp.singouin(level=30, xp=0)
+
+    def other_kill():
+        xp.creatures[killer].xp += 1
+    xp.hooks['before_write'] = [other_kill] * xp.route.XP_WRITE_ATTEMPTS
+
+    response = xp.post(body=_body(killer))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    # Only the other kills' XP: this one's is lost, never written over theirs
+    assert xp.state(killer) == (30, xp.route.XP_WRITE_ATTEMPTS)
+
+
+def test_xp_failure_for_one_singouin_does_not_stop_the_others(xp):
+    killer, assist = xp.singouin(), xp.singouin()
+    xp.failures['xp_for'] = killer
+
+    response = xp.post(body=_body(killer, [assist]))
+
+    assert response.status_code == 200
+    assert xp.state(killer) == (30, 0)
+    assert xp.state(assist) == (30, 187)
+
+
+def test_xp_failure_keeps_the_200(xp):
+    killer = xp.singouin()
+    xp.failures['xp'] = RuntimeError('mongo down')
+
+    response = xp.post(body=_body(killer))
+
+    # The remove is done: losing the XP never makes it a 500
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    assert MONSTER_ID not in xp.creatures
+    assert [corpse.id for corpse in xp.corpses()] == [MONSTER_ID]
+    assert xp.state(killer) == (30, 0)
+
+
+def test_xp_retry_after_removed_pays_nothing_more(xp):
+    killer = xp.singouin()
+    body = _body(killer)
+    assert xp.post(body=body).json['payload'] == {"result": 'removed'}
+
+    response = xp.post(body=body)
+
+    assert response.json['payload'] == {"result": 'gone'}
+    assert xp.state(killer) == (30, 300)
+
+
+@pytest.mark.parametrize('failure', ['publish', 'purge', 'delete'])
+def test_xp_retry_after_a_500_pays_once(xp, failure):
+    killer = xp.singouin()
+    if failure == 'delete':
+        xp.add(MONSTER_ID, level=30, rarity='Medium', delete_error=RuntimeError('mongo down'))
+    else:
+        xp.failures[failure] = ConnectionError('redis down')
+    body = _body(killer)
+
+    assert xp.post(body=body).status_code == 500
+    assert xp.state(killer) == (30, 0)
+
+    # The resolver retries once the backend is back
+    xp.failures.clear()
+    xp.add(MONSTER_ID, level=30, rarity='Medium')
+    assert xp.post(body=body).json['payload'] == {"result": 'removed'}
+
+    assert xp.state(killer) == (30, 300)
 
 
 #
