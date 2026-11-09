@@ -91,10 +91,12 @@ def world(mongo, monkeypatch):
     Loads skinning.py straight from its file (the mongo and routes.mypc
     packages connect / pull every route at import) with the real Corpse model.
     The decorators are stubbed: the view runs with g already set, as they
-    would. Every credit (profession, highscores, satchel) appends to `events`.
-    Killers are looked up in the `creatures` dict.
+    would. Every credit (profession, highscores, satchel) appends to `events`;
+    each Satchel update's fields go to `satchels` too. Killers are looked up
+    in the `creatures` dict.
     """
     events = []
+    satchels = []
     creatures = {}
 
     # Corpse.py imports mongo.utils/constants: give it the real files under a stub mongo
@@ -132,7 +134,8 @@ def world(mongo, monkeypatch):
         'mongo.models.Satchel', monkeypatch,
         SatchelDocument=types.SimpleNamespace(
             objects=lambda _id=None: types.SimpleNamespace(
-                update_one=lambda **kwargs: events.append(('satchel', _id)),
+                update_one=lambda **kwargs: (
+                    events.append(('satchel', _id)), satchels.append(kwargs)),
                 ),
             ),
         )
@@ -165,12 +168,12 @@ def world(mongo, monkeypatch):
     route = _load('test_corpse_skinning_route', SKINNING_ROUTE)
     app = Flask(__name__)
 
-    def corpse(killer, instance=INSTANCE_ID, x=1, y=1):
+    def corpse(killer, instance=INSTANCE_ID, x=1, y=1, rarity='Big'):
         """ Saves a Corpse at (1, 1); killer is a Creature, a raw id, or None. """
         killer_id = getattr(killer, 'id', killer)
         return corpse_model.CorpseDocument(
             gender=True, instance=instance, killer=killer_id,
-            name='Monster', race=11, rarity='Big', x=x, y=y,
+            name='Monster', race=11, rarity=rarity, x=x, y=y,
             ).save()
 
     def add(creature):
@@ -190,7 +193,7 @@ def world(mongo, monkeypatch):
 
     return types.SimpleNamespace(
         route=route, corpse=corpse, add=add, skin=skin, exists=exists, events=events,
-        pa_check=pa_check,
+        pa_check=pa_check, satchels=satchels,
         )
 
 
@@ -434,3 +437,29 @@ def test_can_skin(world, killer, skinner, expected):
         skinner = killer
 
     assert world.route.can_skin(skinner, corpse) is expected
+
+
+#
+# Quantities: each resource gets the rarity's skinning bonus
+# (mongo.constants.CREATURE_RARITY), plus the profession and stat rolls,
+# both stubbed to 0 here
+#
+@pytest.mark.parametrize('rarity, bonus', [
+    ('Small', 0),
+    ('Medium', 1),
+    ('Big', 2),
+    ('Unique', 3),
+    ('Boss', 4),
+    ('God', 5),
+    ])
+def test_skinning_quantity_carries_the_rarity_bonus(world, rarity, bonus):
+    killer = world.add(_creature())
+    corpse = world.corpse(killer, rarity=rarity)
+
+    code, body = world.skin(killer, corpse)
+
+    assert code == 200
+    assert body['success'] is True
+    assert len(world.satchels) == 1
+    assert world.satchels[0]['inc__resource__meat'] == bonus
+    assert world.satchels[0]['inc__resource__skin'] == bonus

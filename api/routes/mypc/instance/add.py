@@ -131,8 +131,8 @@ def add(creatureuuid):
                 raceid = randint(11, 16)
                 gender = randint(0, 1)
                 rarity = choices(
-                    CREATURE_RARITY,
-                    weights=(20, 30, 20, 10, 15, 5),
+                    list(CREATURE_RARITY),
+                    weights=[r['spawn_weight'] for r in CREATURE_RARITY.values()],
                     k=1,
                     )[0]
                 x = randint(1, Map.data['width'])

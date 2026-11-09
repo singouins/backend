@@ -172,7 +172,7 @@ def skinning(creatureuuid, resourceuuid):
 
     for resource in resource_skinned:
         # We calculate the total quantity
-        varx = CREATURE_RARITY.index(Corpse.rarity)   # between 0 and 5
+        varx = CREATURE_RARITY[Corpse.rarity]['bonus']['skinning']  # 0 (Small) to 5 (God)
         vary = 0                                               # between 0 and 4
         varz = probabilistic_binary(g.Creature.stats.total.r)  # between 0 and 1
 
