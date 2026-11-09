@@ -11,7 +11,7 @@ from mongo.models.Instance import InstanceDocument
 from mongo.utils import utcnow
 
 from routes._decorators import internal
-from routes.internal.instance._tools import InternalCallSchema, bad_request
+from routes.internal.instance._tools import InternalCallSchema, bad_request, member_scope
 from utils.decorators import check_is_json
 from utils.instance import leave_instance
 from utils.redis import purge_creature_keys, qput
@@ -33,24 +33,15 @@ def _gone(h: str, eject: InternalCallSchema, why: str):
 
 def _death_scopes(Creature) -> list:
     """
-    Discord scopes told about a Singouin's death: its Korp, then its Squad.
-
-    CreatureKorp.id and CreatureSquad.id default to None, so an embedded
-    korp/squad document does not mean a membership: only a non-None id does
-    (korp/squad themselves may be None on old documents).
-
-    A Pending invitee is not a member: an invite sets the id together with
-    rank 'Pending', and such a Singouin gets no scope for that group. Korp and
-    Squad are checked independently. A missing rank counts as a member.
+    Discord scopes told about a Singouin's death: its Korp, then its Squad,
+    each only for an actual membership (see member_scope). Korp and Squad
+    are checked independently.
     """
-    scopes = []
-    korp_id = getattr(Creature.korp, 'id', None)
-    if korp_id is not None and getattr(Creature.korp, 'rank', None) != 'Pending':
-        scopes.append(f'Korp-{korp_id}')
-    squad_id = getattr(Creature.squad, 'id', None)
-    if squad_id is not None and getattr(Creature.squad, 'rank', None) != 'Pending':
-        scopes.append(f'Squad-{squad_id}')
-    return scopes
+    scopes = [
+        member_scope(Creature.korp, 'Korp'),
+        member_scope(Creature.squad, 'Squad'),
+        ]
+    return [scope for scope in scopes if scope is not None]
 
 
 def _announce_death(h: str, Creature):
