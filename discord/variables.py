@@ -4,7 +4,7 @@ import os
 
 from loguru import logger
 
-from mongo.constants import CREATURE_RARITY, RARITY
+from mongo.constants import RARITY
 from mongo.models.Meta import MetaArmor, MetaRace, MetaWeapon
 
 
@@ -85,9 +85,25 @@ rarity_item_types_emoji = dict(zip(RARITY, rarity_emoji))
 rarity_item_types_discord = dict(zip(RARITY, rarity_discord))
 rarity_item_types_integer = dict(zip(RARITY, rarity_integer))
 
-# Rarity dictionnaries for Monsters
-rarity_monster_types_emoji = dict(zip(CREATURE_RARITY, rarity_emoji))
-rarity_monster_types_discord = dict(zip(CREATURE_RARITY, rarity_discord))
+# Rarity dictionnaries for Monsters: by name, not by position, so a rarity
+# added to mongo.constants.CREATURE_RARITY never shifts the others' colours
+# (tests/test_variables_rarity.py checks every rarity has an entry)
+rarity_monster_types_emoji = {
+    'Small': '🟤 ',
+    'Medium': '⚪ ',
+    'Big': '🟢 ',
+    'Unique': '🔵 ',
+    'Boss': '🟣 ',
+    'God': '🟠 ',
+    }
+rarity_monster_types_discord = {
+    'Small': ':brown_square:',
+    'Medium': ':white_large_square:',
+    'Big': ':green_square:',
+    'Unique': ':blue_square:',
+    'Boss': ':purple_square:',
+    'God': ':orange_square:',
+    }
 
 item_types_discord = {
     'armor': ':shirt:',
