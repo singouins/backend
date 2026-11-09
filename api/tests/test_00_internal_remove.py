@@ -51,6 +51,9 @@ MODEL_STUBS = {
 ISOLATED = [
     'routes.internal',
     'routes.internal.instance',
+    'routes.internal.instance._tools',
+    'routes.internal.instance.eject',
+    'routes.internal.instance.remove',
     'utils.decorators',
     'utils.instance',
     ]
@@ -60,7 +63,7 @@ _ABSENT = object()
 @pytest.fixture
 def modules(monkeypatch):
     """
-    Imports routes.internal.instance and utils.instance against stubbed models,
+    Imports routes.internal.instance.remove and utils.instance against stubbed models,
     then drops them (and puts any previous copy back). Inside api/tests,
     `variables` is tests/variables.py, so the names read at import are set there.
     """
@@ -89,7 +92,9 @@ def modules(monkeypatch):
         attribute = _ABSENT if parent_module is None else getattr(parent_module, child, _ABSENT)
         saved[name] = (sys.modules.pop(name, None), attribute)
     try:
-        import routes.internal.instance as route
+        # Not `import ... as`: the package re-exports the remove() function under
+        # the submodule's name, and that attribute would win over the module
+        route = importlib.import_module('routes.internal.instance.remove')
         import utils.instance as utils_instance
         yield types.SimpleNamespace(route=route, utils_instance=utils_instance)
     finally:
