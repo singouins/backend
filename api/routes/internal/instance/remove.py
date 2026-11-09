@@ -14,11 +14,11 @@ from mongo.models.Instance import InstanceDocument
 from mongo.utils import JSON_OPTIONS, utcnow
 
 from routes._decorators import internal
-from routes.internal.instance._tools import InternalCallSchema, bad_request
+from routes.internal.instance._tools import InternalCallSchema, bad_request, member_scope
 from utils.decorators import check_is_json
-from utils.redis import purge_creature_keys, r
+from utils.redis import purge_creature_keys, qput, r
 from utils.xp import apply_xp, xp_gain
-from variables import PS_AI_CREATURE
+from variables import PS_AI_CREATURE, YQ_DISCORD
 
 
 class RemoveCallSchema(InternalCallSchema):
@@ -79,27 +79,62 @@ def _grant_xp_to(h: str, Singouin, Creature, players: int):
     and xp: so it is a read, compute, then a write conditioned on the
     (level, xp) read. Another kill landing in between makes the write match
     nothing: the Singouin is read again and the gain recomputed.
+    Returns (gain, level before, level after) once written, None otherwise.
     """
     for _ in range(XP_WRITE_ATTEMPTS):
-        gain = xp_gain(Singouin.level, Creature.level, Creature.rarity, players)
+        # Copies of what was read: the write must not change what is returned
+        read_level, read_xp = Singouin.level, Singouin.xp
+        gain = xp_gain(read_level, Creature.level, Creature.rarity, players)
         if gain <= 0:
-            logger.info(f'{h} XP skipped for Creature({Singouin.id}) (gain:0, level:{Singouin.level})')  # noqa: E501
-            return
-        level, xp = apply_xp(Singouin.level, Singouin.xp, gain)
+            logger.info(f'{h} XP skipped for Creature({Singouin.id}) (gain:0, level:{read_level})')  # noqa: E501
+            return None
+        level, xp = apply_xp(read_level, read_xp, gain)
         written = CreatureDocument.objects(
-            _id=Singouin.id, level=Singouin.level, xp=Singouin.xp,
+            _id=Singouin.id, level=read_level, xp=read_xp,
             ).update_one(set__level=level, set__xp=xp)
         if written:
-            up = f', level up:{Singouin.level}->{level}' if level > Singouin.level else ''
+            up = f', level up:{read_level}->{level}' if level > read_level else ''
             logger.info(f'{h} XP OK for Creature({Singouin.id}) (+{gain}{up})')
             # Outside the write loop: a highscore failure never retries the XP
             _count_xp(h, Singouin.id, gain)
-            return
+            return gain, read_level, level
         Singouin = CreatureDocument.objects(_id=Singouin.id).only('_id', 'level', 'xp').first()
         if Singouin is None:
             logger.warning(f'{h} XP skipped (Creature deleted meanwhile)')
-            return
+            return None
     logger.error(f'{h} XP KO for Creature({Singouin.id}) (still conflicting after {XP_WRITE_ATTEMPTS} attempts)')  # noqa: E501
+    return None
+
+
+def _announce_xp(h: str, Creature, granted: list):
+    """
+    One Discord message per Squad for this kill, in its channel: the gain of
+    each of its members, and their level-ups. `granted` holds (Singouin,
+    gain, level before, level after) for each XP actually written, killer
+    first. A Singouin outside any Squad (or only invited, rank 'Pending', see
+    member_scope) is not announced. Never raises: the XP is already written.
+    """
+    try:
+        squads = {}
+        for Singouin, gain, before, after in granted:
+            scope = member_scope(Singouin.squad, 'Squad')
+            if scope is None:
+                continue
+            line = f'> **{Singouin.name}** +{gain} XP'
+            if after > before:
+                line += f', :arrow_up: level {after}'
+            squads.setdefault(scope, []).append(line)
+        for scope, lines in squads.items():
+            qput(YQ_DISCORD, {
+                "ciphered": False,
+                "payload": '\n'.join([
+                    f':crossed_swords: **{Creature.name}** ({Creature.rarity}) killed',
+                    *lines,
+                    ]),
+                "embed": None,
+                "scope": scope})
+    except Exception as e:
+        logger.error(f'{h} XP announce KO [{e}]')
 
 
 def _grant_xp(h: str, Creature, call: RemoveCallSchema):
@@ -118,18 +153,26 @@ def _grant_xp(h: str, Creature, call: RemoveCallSchema):
             logger.info(f'{h} XP skipped (no participant)')
             return
         players = list(CreatureDocument.objects(
-            _id__in=participants, account__ne=None).only('_id', 'level', 'xp'))
+            _id__in=participants, account__ne=None,
+            ).only('_id', 'level', 'xp', 'name', 'squad'))
+        # Killer first, then the assists in the order the resolver sent them
+        players.sort(key=lambda Singouin: participants.index(Singouin.id))
     except Exception as e:
         logger.error(f'{h} XP KO [{e}]')
         return
     if not players:
         logger.info(f'{h} XP skipped (no Singouin among {len(participants)} participant(s))')  # noqa: E501
         return
+    granted = []
     for Singouin in players:
         try:
-            _grant_xp_to(h, Singouin, Creature, len(players))
+            result = _grant_xp_to(h, Singouin, Creature, len(players))
         except Exception as e:
             logger.error(f'{h} XP KO for Creature({Singouin.id}) [{e}]')
+            continue
+        if result is not None:
+            granted.append((Singouin, *result))
+    _announce_xp(h, Creature, granted)
 
 
 def _count_kill(h: str, call: RemoveCallSchema):
@@ -177,10 +220,12 @@ def _remove_gone(h: str, call: InternalCallSchema, why: str):
 # - a Singouin (has an account): 400, it goes through /eject;
 # - otherwise the monster is removed as instance close does it: AI kill, Redis
 #   keys purged, Creature deleted last. It leaves a Corpse (ruling Q105, see
-#   below), then its XP goes to the killer and the assists, level-ups
-#   included (_grant_xp, utils/xp.py), and their kill / assist highscores
-#   go up (_count_kill).
-#   No Discord notice.
+#   below). Once it is gone (so never twice, and never a 500):
+#   - its XP goes to the killer and the assists, level-ups included
+#     (_grant_xp, utils/xp.py), with for each Singouin its general.xp
+#     highscore (_count_xp);
+#   - each Squad involved gets one Discord summary of the kill (_announce_xp);
+#   - the kill / assist highscores go up (_count_kill).
 # The resolver retries on 5xx only, so an internal failure is never a 200.
 @internal.token
 @check_is_json

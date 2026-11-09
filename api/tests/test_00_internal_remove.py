@@ -246,7 +246,7 @@ class _Collection:
 
 
 def _document(events, store, _id, instance, account=None, delete_error=None,
-              level=3, xp=0, rarity='Big'):
+              level=3, xp=0, rarity='Big', name='Monster', squad=None):
     """ A Creature: delete() records the call and drops it from the store. """
     def delete():
         if delete_error is not None:
@@ -259,9 +259,10 @@ def _document(events, store, _id, instance, account=None, delete_error=None,
         gender=True,
         instance=instance,
         level=level,
-        name='Monster',
+        name=name,
         race=11,
         rarity=rarity,
+        squad=squad,
         x=4,
         xp=xp,
         y=5,
@@ -312,6 +313,14 @@ def world(modules, corpse_model, monkeypatch):
     monkeypatch.setattr(route, 'r', types.SimpleNamespace(publish=publish))
     monkeypatch.setattr(route, 'purge_creature_keys', purge)
 
+    discord = []
+
+    def qput(queue, msg):
+        if failures.get('discord') is not None:
+            raise failures['discord']
+        discord.append((queue, msg))
+    monkeypatch.setattr(route, 'qput', qput)
+
     app = Flask(__name__)
     app.add_url_rule(
         '/remove/<string:instanceid>/<string:creatureid>',
@@ -345,6 +354,7 @@ def world(modules, corpse_model, monkeypatch):
         add=add, post=post, events=events, creatures=creatures, instances=instances,
         failures=failures, hooks=hooks, corpses=corpses, route=route,
         highscores=highscores,
+        discord=discord,
         )
 
 
@@ -692,9 +702,11 @@ def xp(world):
     """ The world with a level 30 Medium monster and a Singouin maker. """
     world.add(MONSTER_ID, level=30, rarity='Medium')
 
-    def singouin(level=30, xp=0):
+    def singouin(level=30, xp=0, name='Singouin', squad=None, rank='Member'):
+        """ squad: the Squad id, None for none; rank 'Pending' for an invitee. """
         _id = uuid.uuid4()
-        world.add(_id, account=uuid.uuid4(), level=level, xp=xp)
+        membership = types.SimpleNamespace(id=squad, rank=rank)
+        world.add(_id, account=uuid.uuid4(), level=level, xp=xp, name=name, squad=membership)
         return _id
 
     world.singouin = singouin
@@ -1038,6 +1050,127 @@ def test_highscores_xp_nothing_when_the_write_gives_up(xp):
     xp.post(body=_body(killer))
 
     assert xp.highscores[killer]['xp'] == 0
+
+
+#
+# Discord: one message per Squad and per kill, in its channel, listing the
+# XP of its members (killer first) and their level-ups
+#
+SQUAD_ID = uuid.uuid4()
+OTHER_SQUAD_ID = uuid.uuid4()
+YQ_DISCORD = 'pytest:yarqueue:discord'
+
+
+def _announce(*lines):
+    return '\n'.join([':crossed_swords: **Monster** (Medium) killed', *lines])
+
+
+def _messages(xp):
+    """ (scope, payload) of each message queued for Discord. """
+    for queue, msg in xp.discord:
+        assert queue == YQ_DISCORD
+        assert (msg['ciphered'], msg['embed']) == (False, None)
+    return [(msg['scope'], msg['payload']) for _, msg in xp.discord]
+
+
+def test_discord_one_summary_per_squad(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    assist = xp.singouin(name='Alice', squad=SQUAD_ID)
+
+    xp.post(body=_body(killer, [assist]))
+
+    assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce(
+        '> **Bob** +187 XP',
+        '> **Alice** +187 XP',
+        ))]
+
+
+def test_discord_killer_first_whatever_the_read_order(xp):
+    # Alice is stored (so read) before Bob, the killer
+    assist = xp.singouin(name='Alice', squad=SQUAD_ID)
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+
+    xp.post(body=_body(killer, [assist]))
+
+    [(_, payload)] = _messages(xp)
+    assert payload.splitlines()[1:] == ['> **Bob** +187 XP', '> **Alice** +187 XP']
+
+
+def test_discord_level_up_on_its_line(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID, level=30, xp=1331)
+
+    xp.post(body=_body(killer))
+
+    assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce(
+        '> **Bob** +300 XP, :arrow_up: level 31',
+        ))]
+
+
+def test_discord_each_squad_gets_its_members_only(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    other = xp.singouin(name='Carol', squad=OTHER_SQUAD_ID)
+
+    xp.post(body=_body(killer, [other]))
+
+    assert sorted(_messages(xp)) == sorted([
+        (f'Squad-{SQUAD_ID}', _announce('> **Bob** +187 XP')),
+        (f'Squad-{OTHER_SQUAD_ID}', _announce('> **Carol** +187 XP')),
+        ])
+
+
+@pytest.mark.parametrize('squad, rank', [(None, None), (SQUAD_ID, 'Pending')])
+def test_discord_nothing_outside_a_squad(xp, squad, rank):
+    killer = xp.singouin(name='Bob', squad=squad, rank=rank)
+
+    response = xp.post(body=_body(killer))
+
+    assert response.status_code == 200
+    assert xp.state(killer) == (30, 300)
+    assert _messages(xp) == []
+
+
+def test_discord_only_the_xp_actually_written(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    capped = xp.singouin(name='Max', squad=SQUAD_ID, level=100)
+    failing = xp.singouin(name='Lost', squad=SQUAD_ID)
+    xp.failures['xp_for'] = failing
+
+    xp.post(body=_body(killer, [capped, failing]))
+
+    # Three Singouins in the group: 300 x 1.5 / 3 = 150 for Bob, the others
+    # got nothing written and are not listed
+    assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce('> **Bob** +150 XP'))]
+
+
+def test_discord_nothing_when_no_xp_is_written(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    xp.failures['xp'] = RuntimeError('mongo down')
+
+    xp.post(body=_body(killer))
+
+    assert _messages(xp) == []
+
+
+def test_discord_once_on_retry(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    body = _body(killer)
+    xp.post(body=body)
+
+    assert xp.post(body=body).json['payload'] == {"result": 'gone'}
+
+    assert len(_messages(xp)) == 1
+
+
+def test_discord_failure_keeps_the_200_and_the_xp(xp):
+    killer = xp.singouin(name='Bob', squad=SQUAD_ID)
+    xp.failures['discord'] = ConnectionError('redis down')
+
+    response = xp.post(body=_body(killer))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'removed'}
+    assert xp.state(killer) == (30, 300)
+    assert xp.highscores[killer] == _scores(kill=1, xp=300)
 
 
 #
