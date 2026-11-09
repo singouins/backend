@@ -6,6 +6,7 @@
 ├── _id (UUIDField)
 ├── created (DateTimeField)
 ├── general
+│   ├── assist (IntField)
 │   ├── death (IntField)
 │   └── kill (IntField)
 ├── internal

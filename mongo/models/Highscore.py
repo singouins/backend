@@ -197,9 +197,11 @@ class HighscoreGeneral(EmbeddedDocument):
     Define the embedded document for: Highscore.general
 
     Fields:
-    - death (IntField)
-    - kill  (IntField)
+    - assist (IntField)
+    - death  (IntField)
+    - kill   (IntField)
     """
+    assist = IntField(required=True, default=0)
     death = IntField(required=True, default=0)
     kill = IntField(required=True, default=0)
 

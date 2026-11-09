@@ -147,8 +147,9 @@ def test_highscores_send_the_public_fields_unchanged(world):
     assert payload['_id'] == str(creatureuuid)
     assert payload['created'] == STAMP_JSON
     assert payload['updated'] == STAMP_JSON
-    assert payload['general'] == PUBLIC['general']
-    # The model fills the professions the raw document lacks with their defaults
+    # The model fills what the raw document lacks with its defaults
+    assert payload['general'] == world.model.HighscoreGeneral(
+        **PUBLIC['general']).to_mongo().to_dict()
     assert payload['profession'] == world.model.HighscoreProfession(
         **PUBLIC['profession']).to_mongo().to_dict()
 
