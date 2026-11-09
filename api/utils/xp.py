@@ -1,9 +1,9 @@
 # -*- coding: utf8 -*-
 
 # Pure XP and level arithmetic (designer notes "Système de niveaux et d'XP",
-# 2026-11-06). Deliberately stdlib-only so it can be unit-tested without a
-# Mongo/Redis connection (see tests/test_00_xp.py). The database side lives
-# in routes/internal/instance/remove.py (_grant_xp).
+# 2026-11-06): no database access, unit-tested in tests/test_00_xp.py. The
+# rarity multipliers live in mongo.constants.CREATURE_RARITY (xp_mult). The
+# database side lives in routes/internal/instance/remove.py (_grant_xp).
 #
 # A Creature stores `level` and `xp`, the XP gathered *within* its current
 # level (not a running total): a level-up subtracts the threshold and keeps
@@ -13,6 +13,8 @@
 # and would round the thresholds differently from the notes.
 
 from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
+
+from mongo.constants import CREATURE_RARITY
 
 # Balancing parameters: the only values to change (notes, section 1)
 LEVEL_MAX = 100                 # L
@@ -29,15 +31,6 @@ CAP_PER_KILL = Decimal('0.5')   # a kill gives at most half of the current bar..
 # ...but never less than a same level Medium kill, solo (X * p): levels 1-8,
 # where kills(p) < 2, would else pay that reference kill below its worth
 # (Lordslair, 2026-11-06). From level 9 the half bar is always the larger.
-
-RARITY_MULTIPLIER = {
-    'Small': Decimal('0.5'),
-    'Medium': Decimal(1),
-    'Big': Decimal(2),
-    'Unique': Decimal(4),
-    'Boss': Decimal(8),
-    'God': Decimal(16),
-    }
 
 
 def xp_required(level: int) -> int:
@@ -65,7 +58,9 @@ def xp_gain(player_level: int, monster_level: int, rarity: str, players: int) ->
     if player_level >= LEVEL_MAX or players < 1:
         return 0
     effective_level = min(monster_level, player_level + GAP_ABOVE_MAX)
-    xp = XP_PER_MONSTER_LEVEL * effective_level * RARITY_MULTIPLIER[rarity]
+    # Through str(): Decimal(0.1) would carry the float's binary error
+    multiplier = Decimal(str(CREATURE_RARITY[rarity]['xp_mult']))
+    xp = XP_PER_MONSTER_LEVEL * effective_level * multiplier
     if monster_level < player_level - GAP_BELOW:
         xp *= GAP_BELOW_FACTOR
     xp = xp * (1 + GROUP_BONUS * (players - 1)) / players

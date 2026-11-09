@@ -52,7 +52,7 @@ class CorpseDocument(Document):
     level = IntField(required=True, default=1)
     name = StringField(required=True)
     race = IntField(required=True)
-    rarity = StringField(required=True, choices=CREATURE_RARITY, default='Medium')
+    rarity = StringField(required=True, choices=list(CREATURE_RARITY), default='Medium')
     x = IntField(default=None)
     y = IntField(default=None)
 
