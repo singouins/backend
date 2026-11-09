@@ -7,6 +7,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from mongo.models.Creature import CreatureDocument
+from mongo.models.Highscore import HighscoreDocument
 from mongo.models.Instance import InstanceDocument
 from mongo.utils import utcnow
 
@@ -44,6 +45,18 @@ def _death_scopes(Creature) -> list:
     return [scope for scope in scopes if scope is not None]
 
 
+def _count_death(h: str, Creature):
+    """
+    +1 general.death in the Singouin's highscores. Never raises: the eject is
+    already done, a failure only loses the count.
+    """
+    try:
+        HighscoreDocument.objects(_id=Creature.id).update_one(
+            inc__general__death=1, set__updated=utcnow())
+    except Exception as e:
+        logger.error(f'{h} Highscore death KO [{e}]')
+
+
 def _announce_death(h: str, Creature):
     """ Queues the death message for Discord. Never raises: the eject is already done. """
     try:
@@ -66,7 +79,8 @@ def _announce_death(h: str, Creature):
 # nothing is touched and the answer is {"result": "gone"}. The resolver retries
 # on 5xx only, so an internal failure must never be a 200 with success false.
 # A death (reason 'death') that actually ejects the creature ('left' or
-# 'closed') is announced on Discord to its Korp and Squad; 'gone' never is.
+# 'closed') is counted in its highscores (general.death) and announced on
+# Discord to its Korp and Squad; 'gone' never is.
 @internal.token
 @check_is_json
 def eject(instanceid, creatureid):
@@ -125,8 +139,10 @@ def eject(instanceid, creatureid):
             }
         ), 500
 
-    # Only once the eject succeeded, so a notification issue can never change its answer
+    # Only once the eject succeeded, so a count or notification issue can
+    # never change its answer, and a retry ('gone') never counts it twice
     if eject.reason == 'death' and result in ('left', 'closed'):
+        _count_death(h, Creature)
         _announce_death(h, Creature)
 
     msg = f'{h} Eject OK (result:{result})'

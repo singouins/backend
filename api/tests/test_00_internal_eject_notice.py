@@ -148,9 +148,22 @@ def eject(route, monkeypatch):
     Runs the eject view on a minimal Flask app, with the Creature/Instance
     lookups, leave_instance() and qput() replaced in the route module.
     Returns post(creature, result, reason) -> (response, queued messages).
+    Each general.death increment is recorded in post.deaths (the Creature
+    ids); post.failures['death'] set to an exception makes it raise.
     """
     queued = []
+    deaths = []
+    failures = {}
     monkeypatch.setattr(route, 'qput', lambda queue, msg: queued.append((queue, msg)))
+
+    def highscore(_id):
+        def update_one(inc__general__death, set__updated):
+            if failures.get('death') is not None:
+                raise failures['death']
+            deaths.extend([_id] * inc__general__death)
+            return 1
+        return types.SimpleNamespace(update_one=update_one)
+    monkeypatch.setattr(route, 'HighscoreDocument', types.SimpleNamespace(objects=highscore))
     monkeypatch.setattr(route, 'purge_creature_keys', lambda **kwargs: None)
 
     app = Flask(__name__)
@@ -177,6 +190,7 @@ def eject(route, monkeypatch):
             creature.save = lambda: None
 
         queued.clear()
+        deaths.clear()
         response = client.post(
             f'/eject/{INSTANCE_ID}/{CREATURE_ID}',
             headers={"Authorization": f"Bearer {TOKEN}"},
@@ -189,6 +203,8 @@ def eject(route, monkeypatch):
             )
         return response, list(queued)
 
+    post.deaths = deaths
+    post.failures = failures
     return post
 
 
@@ -371,3 +387,54 @@ def test_isolation_leaves_no_stub_bound_module():
         if parent_module is not None and hasattr(parent_module, child):
             # `from <parent> import <child>` must give what sys.modules holds
             assert getattr(parent_module, child) is current
+
+
+#
+# Highscores: a death that actually ejects counts once in general.death
+#
+@pytest.mark.parametrize('result', ['left', 'closed'])
+def test_eject_death_counts_one_death(eject, result):
+    response, _ = eject(_creature(), result=result)
+
+    assert response.status_code == 200
+    assert eject.deaths == [CREATURE_ID]
+
+
+def test_eject_death_dangling_instance_counts_one_death(eject):
+    response, _ = eject(_creature(), instance=False)
+
+    assert response.json['payload'] == {"result": 'left'}
+    assert eject.deaths == [CREATURE_ID]
+
+
+@pytest.mark.parametrize('reason', ['kick', 'Death', 'timeout'])
+def test_eject_other_reason_counts_no_death(eject, reason):
+    eject(_creature(), reason=reason)
+
+    assert eject.deaths == []
+
+
+def test_eject_death_gone_counts_no_death(eject):
+    # Unknown Creature (or a retry once it left): nothing ejected, nothing counted
+    response, _ = eject(None)
+
+    assert response.json['payload'] == {"result": 'gone'}
+    assert eject.deaths == []
+
+
+def test_eject_death_failure_is_500_and_counts_no_death(eject):
+    response, _ = eject(_creature(), result=RuntimeError('mongo down'))
+
+    assert response.status_code == 500
+    assert eject.deaths == []
+
+
+def test_eject_death_count_failure_keeps_the_200_and_the_announce(eject):
+    eject.failures['death'] = RuntimeError('mongo down')
+
+    response, queued = eject(_creature(squad_id=SQUAD_ID))
+
+    assert response.status_code == 200
+    assert response.json['payload'] == {"result": 'left'}
+    assert queued == [_message(f'Squad-{SQUAD_ID}')]
+    assert eject.deaths == []
