@@ -695,7 +695,8 @@ def test_remove_retry_after_failure_past_the_corpse_leaves_one_corpse(world):
 # (`by`) and the assists gets its own gain, from its own level, and may level
 # up. Granted once the monster is gone, so never twice. The arithmetic itself
 # is covered by test_00_xp.py: here, a level 30 Medium monster against level
-# 30 Singouins is worth 300 solo, 187 each for 2 (x1.25/2), 150 each for 3
+# 30 Singouins is worth 330 solo (counted 3 levels higher), 157 each for 2
+# (x1.05/2), 110 each for 3 (x1.10/3)
 #
 @pytest.fixture
 def xp(world):
@@ -721,7 +722,7 @@ def test_xp_killer_alone(xp):
 
     assert response.status_code == 200
     assert response.json['payload'] == {"result": 'removed'}
-    assert xp.state(killer) == (30, 300)
+    assert xp.state(killer) == (30, 330)
 
 
 def test_xp_group_bonus_between_killer_and_assists(xp):
@@ -729,7 +730,7 @@ def test_xp_group_bonus_between_killer_and_assists(xp):
 
     xp.post(body=_body(killer, [first, second]))
 
-    assert [xp.state(_id) for _id in (killer, first, second)] == [(30, 150)] * 3
+    assert [xp.state(_id) for _id in (killer, first, second)] == [(30, 110)] * 3
 
 
 def test_xp_assists_without_killer(xp):
@@ -737,7 +738,7 @@ def test_xp_assists_without_killer(xp):
 
     xp.post(body=_body(None, [first, second]))
 
-    assert [xp.state(first), xp.state(second)] == [(30, 187), (30, 187)]
+    assert [xp.state(first), xp.state(second)] == [(30, 157), (30, 157)]
 
 
 def test_xp_killer_repeated_in_assists_counts_once(xp):
@@ -746,7 +747,7 @@ def test_xp_killer_repeated_in_assists_counts_once(xp):
     xp.post(body=_body(killer, [killer, assist, assist]))
 
     # Two players, not four
-    assert [xp.state(killer), xp.state(assist)] == [(30, 187), (30, 187)]
+    assert [xp.state(killer), xp.state(assist)] == [(30, 157), (30, 157)]
 
 
 def test_xp_each_gain_uses_its_own_level(xp):
@@ -755,9 +756,9 @@ def test_xp_each_gain_uses_its_own_level(xp):
 
     xp.post(body=_body(killer, [veteran]))
 
-    assert xp.state(killer) == (30, 187)
-    # 30 is more than 10 levels below 50: 300 x 0.1 x 1.25 / 2 = 18.75
-    assert xp.state(veteran) == (50, 18)
+    assert xp.state(killer) == (30, 157)
+    # 30 is more than 10 levels below 50: 300 x 0.1 x 1.05 / 2 = 15.75
+    assert xp.state(veteran) == (50, 15)
 
 
 def test_xp_monsters_and_unknown_ids_get_nothing_and_are_not_counted(xp):
@@ -769,17 +770,17 @@ def test_xp_monsters_and_unknown_ids_get_nothing_and_are_not_counted(xp):
 
     assert response.status_code == 200
     # Solo gain: the group is the Singouins only
-    assert xp.state(killer) == (30, 300)
+    assert xp.state(killer) == (30, 330)
     assert xp.creatures[other_monster].xp == 0
 
 
 def test_xp_levels_up_and_keeps_the_excess(xp):
-    # 1 431 to leave level 30: 1 331 + 300 = 1 631, so level 31 with 200
+    # 1 431 to leave level 30: 1 331 + 330 = 1 661, so level 31 with 230
     killer = xp.singouin(level=30, xp=1331)
 
     xp.post(body=_body(killer))
 
-    assert xp.state(killer) == (31, 200)
+    assert xp.state(killer) == (31, 230)
 
 
 def test_xp_nothing_more_at_the_max_level(xp):
@@ -817,8 +818,8 @@ def test_xp_concurrent_kill_is_read_again_not_overwritten(xp):
 
     xp.post(body=_body(killer))
 
-    # 1 000 + 300 (the other kill) + 300 (this one) = 1 600: level 31 with 169
-    assert xp.state(killer) == (31, 169)
+    # 1 000 + 300 (the other kill) + 330 (this one) = 1 630: level 31 with 199
+    assert xp.state(killer) == (31, 199)
 
 
 def test_xp_endless_conflict_gives_up_and_keeps_the_200(xp):
@@ -844,7 +845,7 @@ def test_xp_failure_for_one_singouin_does_not_stop_the_others(xp):
 
     assert response.status_code == 200
     assert xp.state(killer) == (30, 0)
-    assert xp.state(assist) == (30, 187)
+    assert xp.state(assist) == (30, 157)
 
 
 def test_xp_failure_keeps_the_200(xp):
@@ -869,7 +870,7 @@ def test_xp_retry_after_removed_pays_nothing_more(xp):
     response = xp.post(body=body)
 
     assert response.json['payload'] == {"result": 'gone'}
-    assert xp.state(killer) == (30, 300)
+    assert xp.state(killer) == (30, 330)
 
 
 @pytest.mark.parametrize('failure', ['publish', 'purge', 'delete'])
@@ -889,7 +890,7 @@ def test_xp_retry_after_a_500_pays_once(xp, failure):
     xp.add(MONSTER_ID, level=30, rarity='Medium')
     assert xp.post(body=body).json['payload'] == {"result": 'removed'}
 
-    assert xp.state(killer) == (30, 300)
+    assert xp.state(killer) == (30, 330)
 
 
 #
@@ -907,9 +908,9 @@ def test_highscores_killer_kill_assists_assist(xp):
     response = xp.post(body=_body(killer, [first, second]))
 
     assert response.status_code == 200
-    assert xp.highscores[killer] == _scores(kill=1, xp=150)
-    assert xp.highscores[first] == _scores(assist=1, xp=150)
-    assert xp.highscores[second] == _scores(assist=1, xp=150)
+    assert xp.highscores[killer] == _scores(kill=1, xp=110)
+    assert xp.highscores[first] == _scores(assist=1, xp=110)
+    assert xp.highscores[second] == _scores(assist=1, xp=110)
 
 
 def test_highscores_killer_repeated_in_assists_is_only_the_killer(xp):
@@ -917,8 +918,8 @@ def test_highscores_killer_repeated_in_assists_is_only_the_killer(xp):
 
     xp.post(body=_body(killer, [killer, assist, assist]))
 
-    assert xp.highscores[killer] == _scores(kill=1, xp=187)
-    assert xp.highscores[assist] == _scores(assist=1, xp=187)
+    assert xp.highscores[killer] == _scores(kill=1, xp=157)
+    assert xp.highscores[assist] == _scores(assist=1, xp=157)
 
 
 def test_highscores_assists_without_killer(xp):
@@ -927,7 +928,7 @@ def test_highscores_assists_without_killer(xp):
     response = xp.post(body=_body(None, [assist]))
 
     assert response.status_code == 200
-    assert xp.highscores[assist] == _scores(assist=1, xp=300)
+    assert xp.highscores[assist] == _scores(assist=1, xp=330)
 
 
 def test_highscores_monsters_and_unknown_ids_count_nothing(xp):
@@ -938,7 +939,7 @@ def test_highscores_monsters_and_unknown_ids_count_nothing(xp):
     response = xp.post(body=_body(monster_killer, [assist, uuid.uuid4()]))
 
     assert response.status_code == 200
-    assert xp.highscores == {assist: _scores(assist=1, xp=300)}
+    assert xp.highscores == {assist: _scores(assist=1, xp=330)}
 
 
 def test_highscores_retry_after_removed_counts_nothing_more(xp):
@@ -948,8 +949,8 @@ def test_highscores_retry_after_removed_counts_nothing_more(xp):
 
     assert xp.post(body=body).json['payload'] == {"result": 'gone'}
 
-    assert xp.highscores[killer] == _scores(kill=1, xp=187)
-    assert xp.highscores[assist] == _scores(assist=1, xp=187)
+    assert xp.highscores[killer] == _scores(kill=1, xp=157)
+    assert xp.highscores[assist] == _scores(assist=1, xp=157)
 
 
 def test_highscores_retry_after_a_500_counts_once(xp):
@@ -963,8 +964,8 @@ def test_highscores_retry_after_a_500_counts_once(xp):
     xp.add(MONSTER_ID, level=30, rarity='Medium')
     assert xp.post(body=body).json['payload'] == {"result": 'removed'}
 
-    assert xp.highscores[killer] == _scores(kill=1, xp=187)
-    assert xp.highscores[assist] == _scores(assist=1, xp=187)
+    assert xp.highscores[killer] == _scores(kill=1, xp=157)
+    assert xp.highscores[assist] == _scores(assist=1, xp=157)
 
 
 @pytest.mark.parametrize('counter', ['kill', 'assist', 'xp'])
@@ -977,10 +978,10 @@ def test_highscores_one_counter_failing_keeps_the_200_the_xp_and_the_others(xp, 
     assert response.status_code == 200
     assert response.json['payload'] == {"result": 'removed'}
     # The XP itself is written whatever happens to its highscore
-    assert [xp.state(killer), xp.state(assist)] == [(30, 187), (30, 187)]
+    assert [xp.state(killer), xp.state(assist)] == [(30, 157), (30, 157)]
     expected = {
-        killer: _scores(kill=1, xp=187),
-        assist: _scores(assist=1, xp=187),
+        killer: _scores(kill=1, xp=157),
+        assist: _scores(assist=1, xp=157),
         }
     for _id, scores in expected.items():
         scores[counter] = 0
@@ -999,13 +1000,13 @@ def test_highscores_kill_counted_when_the_xp_fails(xp):
 
 
 def test_highscores_xp_counts_the_whole_gain_across_a_level_up(xp):
-    # 1 331 + 300 levels up to 31 with 200: general.xp still gets the 300
+    # 1 331 + 330 levels up to 31 with 230: general.xp still gets the 330
     killer = xp.singouin(level=30, xp=1331)
 
     xp.post(body=_body(killer))
 
-    assert xp.state(killer) == (31, 200)
-    assert xp.highscores[killer]['xp'] == 300
+    assert xp.state(killer) == (31, 230)
+    assert xp.highscores[killer]['xp'] == 330
 
 
 def test_highscores_xp_adds_up_over_kills(xp):
@@ -1015,7 +1016,7 @@ def test_highscores_xp_adds_up_over_kills(xp):
 
     xp.post(body=_body(killer))
 
-    assert xp.highscores[killer] == _scores(kill=2, xp=600)
+    assert xp.highscores[killer] == _scores(kill=2, xp=660)
 
 
 def test_highscores_xp_nothing_at_the_max_level(xp):
@@ -1035,9 +1036,9 @@ def test_highscores_xp_counted_once_after_a_write_conflict(xp):
 
     xp.post(body=_body(killer))
 
-    assert xp.state(killer) == (31, 169)
-    # This kill's 300 only: the other kill counts its own
-    assert xp.highscores[killer]['xp'] == 300
+    assert xp.state(killer) == (31, 199)
+    # This kill's 330 only: the other kill counts its own
+    assert xp.highscores[killer]['xp'] == 330
 
 
 def test_highscores_xp_nothing_when_the_write_gives_up(xp):
@@ -1080,8 +1081,8 @@ def test_discord_one_summary_per_squad(xp):
     xp.post(body=_body(killer, [assist]))
 
     assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce(
-        '> **Bob** +187 XP',
-        '> **Alice** +187 XP',
+        '> **Bob** +157 XP',
+        '> **Alice** +157 XP',
         ))]
 
 
@@ -1093,7 +1094,7 @@ def test_discord_killer_first_whatever_the_read_order(xp):
     xp.post(body=_body(killer, [assist]))
 
     [(_, payload)] = _messages(xp)
-    assert payload.splitlines()[1:] == ['> **Bob** +187 XP', '> **Alice** +187 XP']
+    assert payload.splitlines()[1:] == ['> **Bob** +157 XP', '> **Alice** +157 XP']
 
 
 def test_discord_level_up_on_its_line(xp):
@@ -1102,7 +1103,7 @@ def test_discord_level_up_on_its_line(xp):
     xp.post(body=_body(killer))
 
     assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce(
-        '> **Bob** +300 XP, :arrow_up: level 31',
+        '> **Bob** +330 XP, :arrow_up: level 31',
         ))]
 
 
@@ -1113,8 +1114,8 @@ def test_discord_each_squad_gets_its_members_only(xp):
     xp.post(body=_body(killer, [other]))
 
     assert sorted(_messages(xp)) == sorted([
-        (f'Squad-{SQUAD_ID}', _announce('> **Bob** +187 XP')),
-        (f'Squad-{OTHER_SQUAD_ID}', _announce('> **Carol** +187 XP')),
+        (f'Squad-{SQUAD_ID}', _announce('> **Bob** +157 XP')),
+        (f'Squad-{OTHER_SQUAD_ID}', _announce('> **Carol** +157 XP')),
         ])
 
 
@@ -1125,7 +1126,7 @@ def test_discord_nothing_outside_a_squad(xp, squad, rank):
     response = xp.post(body=_body(killer))
 
     assert response.status_code == 200
-    assert xp.state(killer) == (30, 300)
+    assert xp.state(killer) == (30, 330)
     assert _messages(xp) == []
 
 
@@ -1137,9 +1138,9 @@ def test_discord_only_the_xp_actually_written(xp):
 
     xp.post(body=_body(killer, [capped, failing]))
 
-    # Three Singouins in the group: 300 x 1.5 / 3 = 150 for Bob, the others
+    # Three Singouins in the group: 300 x 1.10 / 3 = 110 for Bob, the others
     # got nothing written and are not listed
-    assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce('> **Bob** +150 XP'))]
+    assert _messages(xp) == [(f'Squad-{SQUAD_ID}', _announce('> **Bob** +110 XP'))]
 
 
 def test_discord_nothing_when_no_xp_is_written(xp):
@@ -1169,8 +1170,8 @@ def test_discord_failure_keeps_the_200_and_the_xp(xp):
 
     assert response.status_code == 200
     assert response.json['payload'] == {"result": 'removed'}
-    assert xp.state(killer) == (30, 300)
-    assert xp.highscores[killer] == _scores(kill=1, xp=300)
+    assert xp.state(killer) == (30, 330)
+    assert xp.highscores[killer] == _scores(kill=1, xp=330)
 
 
 #
