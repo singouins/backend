@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+from decimal import Decimal
 import os
 import sys
 
@@ -10,7 +11,14 @@ import pytest
 LOCAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
 sys.path.append(LOCAL_PATH)
 
-from utils.xp import LEVEL_MAX, apply_xp, xp_gain, xp_required  # noqa: E402
+from utils.xp import (  # noqa: E402
+    LEVEL_MAX,
+    apply_xp,
+    group_bonus,
+    solo_bonus,
+    xp_gain,
+    xp_required,
+    )
 
 # Designer notes "Système de niveaux et d'XP" (2026-11-06). Pure unit tests:
 # no Mongo, no Redis.
@@ -51,17 +59,68 @@ def test_xp_to_reach_the_max_level_matches_the_notes():
 
 
 #
+# Bonuses: none below level 10. Solo, +1 monster level per 10 player levels;
+# in a group, +5% per teammate up to +25%, before the split
+#
+@pytest.mark.parametrize('level, bonus', [
+    (1, 0),
+    (9, 0),
+    (10, 1),
+    (19, 1),
+    (20, 2),
+    (55, 5),
+    (99, 9),
+    ])
+def test_solo_bonus_one_level_per_ten(level, bonus):
+    assert solo_bonus(level) == bonus
+
+
+@pytest.mark.parametrize('level', range(10, LEVEL_MAX))
+def test_solo_bonus_is_five_to_ten_percent_of_a_same_level_kill(level):
+    assert 0.05 < solo_bonus(level) / level <= 0.10
+
+
+@pytest.mark.parametrize('players, bonus', [
+    (1, 1),
+    (2, '1.05'),
+    (3, '1.10'),
+    (5, '1.20'),
+    (6, '1.25'),
+    (8, '1.25'),   # at most +25%
+    ])
+def test_group_bonus_five_percent_per_teammate(players, bonus):
+    assert group_bonus(30, players) == Decimal(bonus)
+
+
+@pytest.mark.parametrize('players', [1, 2, 6])
+def test_group_bonus_none_below_level_10(players):
+    assert group_bonus(9, players) == 1
+
+
+#
 # xp_gain(player level, monster level, rarity, players)
 #
 def test_gain_same_level_medium_solo():
-    assert xp_gain(30, 30, 'Medium', 1) == 300
+    # The monster counts as level 33: +3 for a level 30 Singouin alone
+    assert xp_gain(30, 30, 'Medium', 1) == 330
+
+
+@pytest.mark.parametrize('level, gain', [
+    (9, 90),      # no bonus below level 10
+    (10, 110),    # +1, paid in full: the cap floor includes it
+    (19, 200),
+    (20, 220),
+    (99, 1080),
+    ])
+def test_gain_solo_bonus(level, gain):
+    assert xp_gain(level, level, 'Medium', 1) == gain
 
 
 @pytest.mark.parametrize('rarity, gain', [
-    ('Small', 150),
-    ('Medium', 300),
-    ('Big', 600),
-    ('Unique', 715),   # 1 200, capped at half of 1 431
+    ('Small', 165),
+    ('Medium', 330),
+    ('Big', 660),
+    ('Unique', 715),   # 1 320, capped at half of 1 431
     ('Boss', 715),
     ('God', 715),
     ])
@@ -70,38 +129,67 @@ def test_gain_rarity_multiplier(rarity, gain):
 
 
 @pytest.mark.parametrize('monster_level, gain', [
-    (54, 540),
-    (55, 550),
-    (56, 550),   # counts as 55: player level + 5
-    (80, 550),
+    (54, 283),   # 540 * 1.05 / 2 = 283.5
+    (55, 288),   # 550 * 1.05 / 2 = 288.75
+    (56, 288),   # counts as 55: player level + 5
+    (80, 288),
     ])
 def test_gain_monster_above_counts_as_five_levels_more_at_most(monster_level, gain):
+    # In a group of 2: no solo bonus to blur the limit
+    assert xp_gain(50, monster_level, 'Medium', 2) == gain
+
+
+@pytest.mark.parametrize('monster_level, gain', [
+    (54, 590),   # 54 + 5
+    (55, 600),
+    (56, 600),   # limited to 55, then + 5: the solo bonus is kept
+    (80, 600),
+    ])
+def test_gain_solo_bonus_comes_after_the_limit_above(monster_level, gain):
     assert xp_gain(50, monster_level, 'Medium', 1) == gain
 
 
 @pytest.mark.parametrize('monster_level, gain', [
-    (41, 410),
-    (40, 400),   # exactly 10 below: no penalty
-    (39, 39),    # more than 10 below: 10%
-    (1, 1),
+    (41, 460),   # counts as 41 + 5 (solo)
+    (40, 450),   # exactly 10 below: no penalty
+    (39, 44),    # more than 10 below (the real level): 10% of 440
+    (1, 6),
     ])
 def test_gain_monster_far_below_is_worth_ten_percent(monster_level, gain):
     assert xp_gain(50, monster_level, 'Medium', 1) == gain
 
 
 @pytest.mark.parametrize('players, gain', [
-    (1, 500),
-    (2, 312),   # 500 * 1.25 / 2 = 312.5, rounded down
-    (3, 250),   # 500 * 1.5 / 3
-    (4, 218),   # 500 * 1.75 / 4 = 218.75
+    (1, 550),   # solo: 55 levels, not a group bonus
+    (2, 262),   # 500 * 1.05 / 2 = 262.5, rounded down
+    (3, 183),   # 500 * 1.10 / 3 = 183.3
+    (4, 143),   # 500 * 1.15 / 4 = 143.75
+    (6, 104),   # 500 * 1.25 / 6 = 104.2
+    (8, 78),    # 500 * 1.25 / 8: no more than +25%
     ])
 def test_gain_group_bonus(players, gain):
     assert xp_gain(50, 50, 'Medium', players) == gain
 
 
+@pytest.mark.parametrize('players, gain', [
+    (1, 90),
+    (2, 45),    # an even split, nothing more
+    (3, 30),
+    ])
+def test_gain_no_bonus_below_level_10(players, gain):
+    assert xp_gain(9, 9, 'Medium', players) == gain
+
+
+def test_gain_group_bonus_from_level_10():
+    assert xp_gain(10, 10, 'Medium', 2) == 52   # 100 * 1.05 / 2 = 52.5
+
+
 def test_gain_is_capped_at_half_a_bar():
-    # Level 10: the monster counts as level 15, 150 XP, capped at 108 (217 / 2)
-    assert xp_gain(10, 50, 'Medium', 1) == 108
+    # Level 10: the monster counts as level 15 + 1, 160 XP, capped at 110
+    # (217 / 2 = 108.5, below the floor: a same level Medium kill, solo, +1)
+    assert xp_gain(10, 50, 'Medium', 1) == 110
+    # Level 20: 25 + 2 levels, 270 XP, under half a bar (347)
+    assert xp_gain(20, 50, 'Medium', 1) == 270
     # Level 9: half a bar (92) is above a same level Medium kill (90)
     assert xp_gain(9, 14, 'God', 1) == 92
 
