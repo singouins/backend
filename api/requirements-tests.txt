@@ -1,6 +1,6 @@
 # Test-only dependencies, not required by the app itself.
 # Installed in CI before running pytest.
-pytest==9.1.1
+pytest==9.2.0
 # In-memory Redis for tests/test_00_pa.py (get_pa/consume_pa without a server).
 fakeredis==2.40.0
 # In-memory Mongo for the tests that run real Mongo updates (Item lock, corpses, mixology).
