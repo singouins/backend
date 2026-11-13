@@ -1,9 +1,26 @@
 # -*- coding: utf8 -*-
 
+import datetime
+
+import mongomock
 import pytest
 import requests
 
 from variables import AUTH_API_URL, AUTH_PAYLOAD, API_URL, CREATURE_ID
+
+
+@pytest.fixture(autouse=True)
+def mongomock_utcnow(monkeypatch):
+    """
+    mongomock (4.3.0, its latest) computes "now", for the TTL indexes among
+    others, with datetime.utcnow(), deprecated since Python 3.12: one
+    DeprecationWarning per call. Its own documented hook, mongomock.utcnow,
+    is given the same naive UTC value without the deprecated call.
+    """
+    monkeypatch.setattr(
+        mongomock, 'utcnow',
+        lambda: datetime.datetime.now(datetime.UTC).replace(tzinfo=None),
+        )
 
 
 @pytest.fixture(scope="session")
