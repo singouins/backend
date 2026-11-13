@@ -93,43 +93,31 @@ class Mob(ABC):
                 self.red = 0
                 self.blue = 0
 
-        pa_info = {
-            'blue': {
-                'key': f"{env_vars['API_ENV']}:pas:{self.creature.id}:blue",
-                'max_pa': BLUE_PA_MAX,
-                'duration': BLUE_PA_DURATION,
-                'max_ttl': BLUE_PA_MAX * BLUE_PA_DURATION,
-                'current_pa': BLUE_PA_MAX,
-            },
-            'red': {
-                'key': f"{env_vars['API_ENV']}:pas:{self.creature.id}:red",
-                'max_pa': RED_PA_MAX,
-                'duration': RED_PA_DURATION,
-                'max_ttl': RED_PA_MAX * RED_PA_DURATION,
-                'current_pa': RED_PA_MAX,
-            }
-        }
-
         # Initialize self.pa as an instance of the PA class if it doesn't exist
         if not hasattr(self, 'pa'):
             self.pa = PA()
 
-        for pa_color, pa_data in pa_info.items():
-            try:
-                if await r.exists(pa_data['key']):
-                    # A negative TTL (no expiry) counts as nothing left to wait for
-                    ttl = max(await r.ttl(pa_data['key']), 0)
-                    pa_info[pa_color]['current_pa'] = int(
-                        round((pa_data['max_ttl'] - ttl) / pa_data['duration'])
-                        )
-            except Exception as e:
-                # Redis hiccup (pool exhaustion, transient disconnect, ...):
-                # fall back to the max_pa default already in pa_data rather
-                # than letting this crash the whole Creature task.
-                logger.error(f'{self.logh} | Redis PA Query KO ({pa_color}) [{e}]')
+        # Full pools unless Redis says otherwise
+        current = {'red': RED_PA_MAX, 'blue': BLUE_PA_MAX}
+        try:
+            # One FCALL_RO pa_read (library functions_pa), as the API, discord
+            # and the resolver read: a PA only counts once fully regenerated.
+            # KEYS: blue first; ARGV: red first
+            red_pa, _, _, blue_pa, _, _ = await r.fcall_ro(
+                'pa_read', 2,
+                f"{env_vars['API_ENV']}:pas:{self.creature.id}:blue",
+                f"{env_vars['API_ENV']}:pas:{self.creature.id}:red",
+                RED_PA_DURATION, BLUE_PA_DURATION, RED_PA_MAX, BLUE_PA_MAX,
+                )
+            current = {'red': red_pa, 'blue': blue_pa}
+        except Exception as e:
+            # Redis hiccup (pool exhaustion, transient disconnect, ...):
+            # fall back to full pools rather than letting this crash the
+            # whole Creature task.
+            logger.error(f'{self.logh} | Redis PA Query KO [{e}]')
 
-            # Dynamically assign the current_pa to self.pa based on the pa_type
-            setattr(self.pa, pa_color, pa_data['current_pa'])
+        self.pa.red = current['red']
+        self.pa.blue = current['blue']
 
     async def get_creature(self):
         try:

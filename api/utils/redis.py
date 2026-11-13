@@ -13,7 +13,6 @@ from utils.pa import (
     RED_PA_MAX,
     pa_cost_split,
     pa_durations,
-    pa_from_ttl,
     pa_spend_split,
     ttl_after_spend,
     )
@@ -103,6 +102,37 @@ def str2typed(string: str):
     return string
 
 
+def _pa_read(creatureuuid: str, tick: int) -> dict:
+    """
+    Reads both PA pools of a Creature with FCALL_RO pa_read, from the Redis
+    function library functions_pa (Lordslair's, deployed with the databases
+    chart; source of truth: singouins/helm,
+    singouins-databases/files/redis/functions/functions_pa.lua). The API,
+    discord, ai and the resolver all read the pools through it.
+
+    A PA only counts once fully regenerated: pa = max - ceil(remaining / duration).
+    ttnpa is 1..duration while the pool regenerates, 0 when it is full.
+
+    :param creatureuuid: The UUID of the creature.
+    :param tick: The tick (seconds) of the Creature's Instance, see utils.pa.pa_durations().
+
+    :return: {'blue': {'pa', 'ttnpa', 'ttl'}, 'red': {'pa', 'ttnpa', 'ttl'}},
+             ttl being the raw Redis TTL (-2 key absent, -1 no expiry).
+    """
+    durations = pa_durations(tick)
+    # KEYS: blue first; ARGV: red first
+    red_pa, red_ttnpa, red_ttl, blue_pa, blue_ttnpa, blue_ttl = r.fcall_ro(
+        'pa_read', 2,
+        f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue",
+        f"{env_vars['API_ENV']}:pas:{creatureuuid}:red",
+        durations['red'], durations['blue'], RED_PA_MAX, BLUE_PA_MAX,
+        )
+    return {
+        "blue": {"pa": blue_pa, "ttnpa": blue_ttnpa, "ttl": blue_ttl},
+        "red": {"pa": red_pa, "ttnpa": red_ttnpa, "ttl": red_ttl},
+    }
+
+
 def get_pa(creatureuuid: str, *, tick: Optional[int]) -> Optional[dict]:
     """
     Retrieves the blue and red PA and their TTL for a Creature.
@@ -113,23 +143,13 @@ def get_pa(creatureuuid: str, *, tick: Optional[int]) -> Optional[dict]:
                  Mandatory: pass None explicitly when the Creature is not in an Instance,
                  there are no pools then, Redis is not touched and None is returned.
 
-    :return: A dictionary with PA and TTL information for both blue and red,
-             or None when the Creature is not in an Instance.
+    :return: A dictionary with PA and TTL information for both blue and red
+             (see _pa_read()), or None when the Creature is not in an Instance.
     """
     if tick is None:
         return None
 
-    durations = pa_durations(tick)
-
-    ttls = {
-        "blue": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue"),
-        "red": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red"),
-    }
-
-    return {
-        "blue": pa_from_ttl(ttls['blue'], BLUE_PA_MAX, durations['blue']),
-        "red": pa_from_ttl(ttls['red'], RED_PA_MAX, durations['red']),
-    }
+    return _pa_read(creatureuuid, tick)
 
 
 def consume_pa(
@@ -161,16 +181,12 @@ def consume_pa(
 
     durations = pa_durations(tick)
 
-    ttls = {
-        "blue": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:blue"),
-        "red": r.ttl(f"{env_vars['API_ENV']}:pas:{creatureuuid}:red"),
-    }
+    # The same read as get_pa(): fully regenerated PA only
+    pools = _pa_read(creatureuuid, tick)
+    ttls = {colour: pools[colour]['ttl'] for colour in ('blue', 'red')}
 
     # Designer ruling Q104: blue is spent first, red covers the blue shortfall
-    available = {
-        "blue": pa_from_ttl(ttls['blue'], BLUE_PA_MAX, durations['blue'])['pa'],
-        "red": pa_from_ttl(ttls['red'], RED_PA_MAX, durations['red'])['pa'],
-    }
+    available = {colour: pools[colour]['pa'] for colour in ('blue', 'red')}
     split = pa_cost_split(available['red'], available['blue'], redpa, bluepa)
     if split is None:
         # The pools changed between the check and now (concurrent request):

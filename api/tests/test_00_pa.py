@@ -20,11 +20,11 @@ from utils.pa import (  # noqa: E402
     equip_cost,
     pa_cost_split,
     pa_durations,
-    pa_from_ttl,
     pa_shortfall_colour,
     pa_spend_split,
     ttl_after_spend,
     )
+from redis_functions import load_functions_pa  # noqa: E402
 
 CREATURE_ID = '00000000-0000-0000-0000-00000000c0fe'
 
@@ -44,33 +44,6 @@ def test_pa_durations_normal_tick():
 
 def test_pa_durations_fast_tick():
     assert pa_durations(60) == {'red': 60, 'blue': 120}
-
-
-@pytest.mark.parametrize('ttl', [-2, -1])
-def test_pa_from_ttl_pool_full(ttl):
-    """ A missing key (ttl -2) or a key without expiry (ttl -1) is a full pool. """
-    assert pa_from_ttl(ttl, RED_PA_MAX, 3600) == {'pa': 16, 'ttnpa': 0, 'ttl': ttl}
-    assert pa_from_ttl(ttl, BLUE_PA_MAX, 7200) == {'pa': 8, 'ttnpa': 0, 'ttl': ttl}
-
-
-def test_pa_from_ttl_blue_two_spent_normal_tick():
-    """
-    PO example: blue pool, 2 PA just spent in a normal instance (TTL 14400).
-    With the blue duration of 2 ticks that is 6 PA left, not 4.
-    """
-    assert pa_from_ttl(14400, BLUE_PA_MAX, 7200) == {'pa': 6, 'ttnpa': 0, 'ttl': 14400}
-
-
-def test_pa_from_ttl_red_partially_regenerated():
-    """ 5000s left on a red pool: 1 PA still missing, 1400s before the next one. """
-    assert pa_from_ttl(5000, RED_PA_MAX, 3600) == {'pa': 15, 'ttnpa': 1400, 'ttl': 5000}
-
-
-def test_pa_from_ttl_fast_instance():
-    """ Fast instance (tick 60): 3 red PA spent 10s ago. """
-    assert pa_from_ttl(170, RED_PA_MAX, 60) == {'pa': 13, 'ttnpa': 50, 'ttl': 170}
-    # Same instance, 1 blue PA spent 30s ago (blue duration 120s)
-    assert pa_from_ttl(90, BLUE_PA_MAX, 120) == {'pa': 7, 'ttnpa': 90, 'ttl': 90}
 
 
 def test_ttl_after_spend_from_absent_key():
@@ -187,14 +160,86 @@ def pa_redis(monkeypatch):
 
     import utils.redis as utils_redis
 
-    monkeypatch.setattr(utils_redis, 'r', fakeredis.FakeStrictRedis(server=fakeredis.FakeServer()))
+    client = fakeredis.FakeStrictRedis(server=fakeredis.FakeServer())
+    # get_pa() and consume_pa() read through FCALL_RO pa_read
+    load_functions_pa(client)
+    monkeypatch.setattr(utils_redis, 'r', client)
     return utils_redis
 
 
+def _set_ttls(pa_redis, red=None, blue=None, persist=False):
+    for colour, ttl in (('red', red), ('blue', blue)):
+        if ttl is not None:
+            key = f'pytest:pas:{CREATURE_ID}:{colour}'
+            pa_redis.r.set(key, 'None', ex=ttl)
+            if persist:
+                pa_redis.r.persist(key)
+
+
 def test_get_pa_full_pools(pa_redis):
+    """ A missing key (ttl -2) is a full pool. """
     pa = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)
     assert pa['red'] == {'pa': 16, 'ttnpa': 0, 'ttl': -2}
     assert pa['blue'] == {'pa': 8, 'ttnpa': 0, 'ttl': -2}
+
+
+def test_get_pa_key_without_expiry_is_full(pa_redis):
+    """ A key without expiry (ttl -1) is a full pool too. """
+    _set_ttls(pa_redis, red=100, blue=100, persist=True)
+
+    pa = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)
+    assert pa['red'] == {'pa': 16, 'ttnpa': 0, 'ttl': -1}
+    assert pa['blue'] == {'pa': 8, 'ttnpa': 0, 'ttl': -1}
+
+
+def test_get_pa_blue_two_spent_normal_tick(pa_redis):
+    """
+    PO example: blue pool, 2 PA just spent in a normal instance (TTL 14400).
+    With the blue duration of 2 ticks that is 6 PA left, not 4. The next PA
+    is a whole blue duration away: ttnpa is 1..duration while regenerating.
+    """
+    _set_ttls(pa_redis, blue=14400)
+
+    blue = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)['blue']
+    assert blue['pa'] == 6
+    assert 7199 <= blue['ttnpa'] <= 7200
+
+
+def test_get_pa_counts_only_fully_regenerated_pa(pa_redis):
+    """
+    functions_pa: pa = max - ceil(remaining / duration), as the resolver reads.
+    Red 5000 s left at tick 3600 is 1.39 PA missing: 14 PA, not round()'s 15.
+    Blue 9000 s left (duration 7200) is 1.25 PA missing: 6 PA, not 7.
+    """
+    _set_ttls(pa_redis, red=5000, blue=9000)
+
+    pa = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)
+    assert pa['red']['pa'] == 14
+    assert 1399 <= pa['red']['ttnpa'] <= 1400
+    assert 4999 <= pa['red']['ttl'] <= 5000
+    assert pa['blue']['pa'] == 6
+    assert 1799 <= pa['blue']['ttnpa'] <= 1800
+    assert 8999 <= pa['blue']['ttl'] <= 9000
+
+
+def test_get_pa_just_past_a_whole_pa_is_not_a_pa_yet(pa_redis):
+    """ 3700 s left at tick 3600: 1 PA and 100 s missing, so 14 PA (round() said 15). """
+    _set_ttls(pa_redis, red=3700)
+
+    red = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)['red']
+    assert red['pa'] == 14
+    assert 99 <= red['ttnpa'] <= 100
+
+
+def test_get_pa_fast_instance(pa_redis):
+    """ Fast instance, tick 60: red 1 PA per 60s, blue 1 PA per 120s. """
+    _set_ttls(pa_redis, red=170, blue=90)
+
+    pa = pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=60)
+    assert pa['red']['pa'] == 13
+    assert 49 <= pa['red']['ttnpa'] <= 50
+    assert pa['blue']['pa'] == 7
+    assert 89 <= pa['blue']['ttnpa'] <= 90
 
 
 def test_consume_pa_normal_tick(pa_redis):
@@ -295,6 +340,27 @@ def test_consume_pa_unaffordable_spends_anyway_without_raising(pa_redis):
 
     assert_ttl_close(pa_redis, 'blue', 8 * 7200)
     assert_ttl_close(pa_redis, 'red', 17 * 3600)
+
+
+def test_get_pa_overspent_pool_is_negative(pa_redis):
+    """ consume_pa() may overspend in a race (red past its max): pa goes below zero. """
+    _set_ttls(pa_redis, red=17 * 3600)
+
+    assert pa_redis.get_pa(creatureuuid=CREATURE_ID, tick=3600)['red']['pa'] == -1
+
+
+def test_consume_pa_checks_fully_regenerated_pa(pa_redis):
+    """
+    consume_pa() reads like get_pa(): 10200 s left on the blue pool (duration
+    7200) is 6 blue PA (round() said 7), so a 7 blue action has its last blue
+    covered by red (Q104).
+    """
+    _set_ttls(pa_redis, blue=10200)
+
+    pa_redis.consume_pa(creatureuuid=CREATURE_ID, bluepa=7, tick=3600)
+
+    assert_ttl_close(pa_redis, 'blue', 10200 + 6 * 7200)
+    assert_ttl_close(pa_redis, 'red', 3600)
 
 
 @pytest.fixture
